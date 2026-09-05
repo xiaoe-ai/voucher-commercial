@@ -56,11 +56,15 @@ jobs:
           {
             echo 'BEGIN;'
             cat "$MIGRATION_PATH"
-            echo "select case when exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='verify_voucher' and p.pronargs=2 and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%') then 1 else 1/0 end;"
-            echo "select case when exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_voucher' and p.pronargs=4 and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%') then 1 else 1/0 end;"
-            echo "select case when (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('verify_voucher','redeem_voucher'))=4 then 1 else 1/0 end;"
+            echo "select 'VERIFY_OK=' || exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='verify_voucher' and p.pronargs=2 and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%');"
+            echo "select 'REDEEM_OK=' || exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_voucher' and p.pronargs=4 and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%');"
+            echo "select 'OVERLOAD_COUNT=' || count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('verify_voucher','redeem_voucher');"
             echo 'ROLLBACK;'
-          } | psql -v ON_ERROR_STOP=1
+          } | tee /tmp/phase2c.out | psql -v ON_ERROR_STOP=1 | tee /tmp/phase2c.result
+
+          grep -qx 'VERIFY_OK=true' /tmp/phase2c.result
+          grep -qx 'REDEEM_OK=true' /tmp/phase2c.result
+          grep -qx 'OVERLOAD_COUNT=4' /tmp/phase2c.result
           echo 'Commercial Phase 2C dry-run completed and rolled back.'
 
       - name: Verify rollback preserved live timezone residue
