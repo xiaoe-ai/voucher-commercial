@@ -29,8 +29,9 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 ## D. Business workflow
 - [PENDING] Admin: create Partner -> allocate Voucher Type -> create Staff.
-- [PENDING] Partner: issue voucher -> generate customer voucher / QR.
-- [PENDING] Staff: scan / lookup -> validate -> redeem -> history.
+- [PASS] Canonical recovery Partner issue -> Staff verify -> Staff redeem flow passed in isolated PostgreSQL 17 workflow run `33969904174`, including second-redemption rejection.
+- [PENDING] Live/current Commercial Partner: issue voucher -> generate customer voucher / QR.
+- [PENDING] Live/current Commercial Staff: scan / lookup -> validate -> redeem -> history.
 - [PENDING] Voucher expiry and revoked/suspended behavior.
 - [PENDING] Reporting and Excel export end-to-end verification with customer-derived filename.
 
@@ -60,7 +61,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] All 9 live Commercial Edge Function sources are archived under `supabase/functions/`, with live version / `verify_jwt` / source SHA recorded in `COMMERCIAL_EDGE_FUNCTION_SOURCE_MANIFEST_V1.md`.
 - [PASS] Edge source/build rehearsal run `33969245334` passed required source-tree checks, Deno type-check for all 9 functions, Commercial-neutral contamination scan, Commercial bridge binding checks, JWT manifest validation and source-evidence emission without mutating live deployment.
 - [PASS] Isolated local Supabase recovery rehearsal run `33969555832` passed canonical-only stack startup, canonical SQL application, archived Edge Function startup, XiaoE bridge health, protected-function JWT enforcement, bootstrap custom-auth surface checks and emitted `PRODUCTION_TOUCHED=false`.
-- [PENDING] Complete post-recovery Admin -> Partner -> Staff -> issue -> verify -> redeem end-to-end flow. Canonical business E2E run `33969706548` proved canonical SQL, fixture seed and Partner issue, then stopped because the test harness attempted a Staff-side direct voucher lookup blocked by RLS. Run `33969766121` corrected that RLS-boundary handoff but failed before `verify_voucher()` due a psql variable-substitution syntax error inside a `DO $$...$$` block. Per the two-failure STOP rule, no third execution was attempted; business RPC failure has not been demonstrated.
+- [PASS] Post-recovery canonical business E2E completed successfully in workflow run `33969904174`: Partner issuance passed, Staff verification passed, Staff redemption passed, a second redemption attempt was rejected, and `PRODUCTION_TOUCHED=false` was emitted. The two earlier runs (`33969706548`, `33969766121`) failed only in the test harness before full business execution; the corrected session-setting handoff resolved those harness defects without changing business logic.
 
 ## H. Public/PWA entry points
 - [PASS] Admin portal exists.
@@ -88,7 +89,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - Commercial live Edge Function inventory contains 9 active functions; their source is archived in GitHub and version/JWT/source-hash evidence is captured in `COMMERCIAL_EDGE_FUNCTION_SOURCE_MANIFEST_V1.md`.
 - Edge source/build rehearsal run `33969245334` passed all source validation steps and recorded `LIVE_DEPLOYMENT_MUTATED=false`.
 - Local Supabase recovery rehearsal run `33969555832` passed the full canonical-only local stack and Edge Function smoke checks with `PRODUCTION_TOUCHED=false`.
-- Canonical business E2E run `33969706548` reached and passed Partner issuance before the Staff-side harness violated RLS by reading `vouchers` directly; run `33969766121` fixed that handoff but then hit a psql harness syntax error before business RPC execution. Two-failure STOP is in effect for this E2E harness.
+- Canonical business E2E run `33969904174` passed the complete isolated flow `partner_issue -> staff_verify -> staff_redeem`, including double-redemption protection, after the harness-only defects in runs `33969706548` and `33969766121` were corrected.
 - `commercial-brand.js` retains only defensive legacy-detection/scrub behavior where old literals are needed to prevent legacy content from surfacing; it no longer exposes the old theme alias.
 - `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
@@ -96,7 +97,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only routing, a successful runtime read, a verified isolated canonical rebuild and authorization matrix, a successful isolated database backup/restore rehearsal, a complete archived/type-checked Edge Function source set, and a successful canonical-only local Supabase recovery rehearsal with Edge Function startup and security checks. Remaining blockers are live end-to-end role/workflow verification, actual-device branding/PWA verification, and completion of the post-recovery business E2E after the test harness is corrected under the two-failure STOP rule.
+Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only routing, a successful runtime read, a verified isolated canonical rebuild and authorization matrix, a successful isolated database backup/restore rehearsal, a complete archived/type-checked Edge Function source set, a successful canonical-only local Supabase recovery rehearsal with Edge Function startup and security checks, and a successful isolated Partner issue -> Staff verify -> Staff redeem business E2E. Remaining blockers are live/current Commercial role/workflow verification, actual-device branding/PWA verification, expiry/revocation verification, and reporting/Excel end-to-end verification.
 
 Repository metadata note: the GitHub repository description still shows `evolution-optical-voucher`; the connected toolset does not expose repository-description write capability, so this remains a manual metadata cleanup item and does not represent active runtime code.
 
