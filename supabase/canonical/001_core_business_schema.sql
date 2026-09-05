@@ -53,6 +53,7 @@ create table public.staff_users (
   user_id uuid not null unique references auth.users(id) on delete cascade,
   branch_id uuid references public.branches(id),
   staff_name text not null,
+  staff_code text not null,
   role text default 'staff',
   status text default 'active',
   created_at timestamptz default now(),
@@ -60,6 +61,8 @@ create table public.staff_users (
   constraint staff_users_role_check check (role in ('staff','manager','all_branch_manager')),
   constraint staff_users_status_check check (status in ('active','suspended','inactive'))
 );
+
+create unique index staff_users_staff_code_uidx on public.staff_users (upper(staff_code));
 
 create table public.voucher_templates (
   id uuid primary key default gen_random_uuid(),
