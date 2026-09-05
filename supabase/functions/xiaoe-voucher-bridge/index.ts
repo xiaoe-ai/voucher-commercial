@@ -8,261 +8,37 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const BRIDGE_TOKEN = Deno.env.get(BRIDGE_SECRET) ?? "";
 const MANAGEMENT_TOKEN = Deno.env.get(MANAGEMENT_SECRET) ?? "";
 
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-  status,
-  headers: { "content-type": "application/json; charset=utf-8" },
-});
-
-function auth(req: Request): boolean {
-  const supplied = req.headers.get("x-xiaoe-bridge-token") ?? "";
-  return !!BRIDGE_TOKEN && supplied === BRIDGE_TOKEN;
-}
-
-const allowedOps = new Set(["eq","neq","gt","gte","lt","lte","like","ilike","is","in"]);
-
-function buildFilters(filters: Record<string, unknown> | undefined): string {
-  if (!filters || Object.keys(filters).length === 0) return "";
-  const sp = new URLSearchParams();
-  for (const [column, raw] of Object.entries(filters)) {
-    let op = "eq";
-    let value: unknown = raw;
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-      const r = raw as Record<string, unknown>;
-      op = typeof r.op === "string" ? r.op : "eq";
-      value = r.value;
-    }
-    if (!allowedOps.has(op)) throw new Error(`unsupported filter operator: ${op}`);
-    if (op === "in") {
-      if (!Array.isArray(value)) throw new Error("in filter requires array value");
-      sp.set(column, `in.(${value.map(v => String(v)).join(",")})`);
-    } else {
-      sp.set(column, `${op}.${String(value)}`);
-    }
-  }
-  return sp.toString();
-}
-
-async function callUrl(url: string, init: RequestInit = {}, mode: "service" | "management" = "service") {
-  const headers = new Headers(init.headers ?? {});
-  headers.set("content-type", "application/json");
-  if (mode === "management") {
-    if (!MANAGEMENT_TOKEN) return { status: 503, ok: false, body: { error: "management token not configured" } };
-    headers.set("authorization", `Bearer ${MANAGEMENT_TOKEN}`);
-  } else {
-    headers.set("apikey", SERVICE_ROLE_KEY);
-    headers.set("authorization", `Bearer ${SERVICE_ROLE_KEY}`);
-  }
-  const res = await fetch(url, { ...init, headers });
-  const text = await res.text();
-  let body: unknown = text;
-  try { body = text ? JSON.parse(text) : null; } catch { /* keep text */ }
-  return { status: res.status, ok: res.ok, body };
-}
-
-async function rest(path: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers ?? {});
-  headers.set("accept-profile", "public");
-  headers.set("content-profile", "public");
-  return callUrl(`${SUPABASE_URL}${path}`, { ...init, headers }, "service");
-}
-
-function managementPathAllowed(path: string): boolean {
-  if (!path.startsWith("/v1/")) return false;
-  const projectScoped = [
-    `/v1/projects/${PROJECT_REF}`,
-    `/v1/projects/${PROJECT_REF}/`,
-    `/v1/projects/${PROJECT_REF}/functions`,
-    `/v1/projects/${PROJECT_REF}/secrets`,
-    `/v1/projects/${PROJECT_REF}/branches`,
-    `/v1/projects/${PROJECT_REF}/types`,
-    `/v1/projects/${PROJECT_REF}/database`,
-    `/v1/projects/${PROJECT_REF}/config`,
-    `/v1/projects/${PROJECT_REF}/analytics`,
-    `/v1/projects/${PROJECT_REF}/health`,
-  ];
-  return projectScoped.some(prefix => path === prefix || path.startsWith(prefix + "/") || path.startsWith(prefix + "?"));
-}
-
-async function management(path: string, init: RequestInit = {}) {
-  if (!managementPathAllowed(path)) return { status: 403, ok: false, body: { error: "management path blocked: Commercial project only" } };
-  return callUrl(`https://api.supabase.com${path}`, init, "management");
-}
-
-async function rpc(fn: string, params: unknown) {
-  return rest(`/rest/v1/rpc/${encodeURIComponent(fn)}`, { method: "POST", body: JSON.stringify(params ?? {}) });
-}
-
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204 });
-  if (!auth(req)) return json({ ok: false, error: "unauthorized" }, 401);
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return json({ ok: false, error: "bridge runtime not configured" }, 500);
-
-  let input: Record<string, unknown> = {};
-  try { input = req.method === "GET" ? {} : await req.json(); } catch { return json({ ok: false, error: "invalid json" }, 400); }
-
-  const action = String(input.action ?? (req.method === "GET" ? "health" : ""));
-
-  try {
-    if (action === "health") {
-      return json({
-        ok: true,
-        bridge: "xiaoe-voucher-bridge",
-        project_ref: PROJECT_REF,
-        profile: "commercial_direct_connector_parity_v1",
-        management_plane: MANAGEMENT_TOKEN ? "ready" : "credential_pending",
-        actions: [
-          "health","read","insert","update","upsert","delete","rpc",
-          "sql_query","sql_execute",
-          "auth_list_users","auth_get_user","auth_create_user","auth_update_user","auth_delete_user",
-          "storage_list_buckets","storage_create_bucket","storage_update_bucket","storage_delete_bucket","storage_list_objects","storage_delete_objects",
-          "management_call"
-        ]
-      });
-    }
-
-    if (action === "rpc") {
-      const fn = String(input.function ?? "");
-      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fn)) return json({ ok: false, error: "invalid rpc function" }, 400);
-      const out = await rpc(fn, input.params ?? {});
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "sql_query") {
-      const sql = String(input.sql ?? "").trim();
-      if (!sql) return json({ ok: false, error: "sql is required" }, 400);
-      const out = await rpc("xiaoe_admin_query", { p_sql: sql });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "sql_execute") {
-      const sql = String(input.sql ?? "").trim();
-      if (!sql) return json({ ok: false, error: "sql is required" }, 400);
-      const out = await rpc("xiaoe_admin_execute", { p_sql: sql });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "auth_list_users") {
-      const page = Math.max(Number(input.page ?? 1), 1);
-      const perPage = Math.min(Math.max(Number(input.per_page ?? 50), 1), 1000);
-      const out = await callUrl(`${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`);
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "auth_get_user") {
-      const userId = String(input.user_id ?? "");
-      if (!/^[0-9a-f-]{36}$/i.test(userId)) return json({ ok: false, error: "invalid user_id" }, 400);
-      const out = await callUrl(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`);
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "auth_create_user") {
-      const out = await callUrl(`${SUPABASE_URL}/auth/v1/admin/users`, { method: "POST", body: JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "auth_update_user") {
-      const userId = String(input.user_id ?? "");
-      if (!/^[0-9a-f-]{36}$/i.test(userId)) return json({ ok: false, error: "invalid user_id" }, 400);
-      const out = await callUrl(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { method: "PUT", body: JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "auth_delete_user") {
-      const userId = String(input.user_id ?? "");
-      if (!/^[0-9a-f-]{36}$/i.test(userId)) return json({ ok: false, error: "invalid user_id" }, 400);
-      const softDelete = Boolean(input.soft_delete ?? false);
-      const out = await callUrl(`${SUPABASE_URL}/auth/v1/admin/users/${userId}${softDelete ? "?should_soft_delete=true" : ""}`, { method: "DELETE" });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "storage_list_buckets") {
-      const out = await callUrl(`${SUPABASE_URL}/storage/v1/bucket`);
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "storage_create_bucket") {
-      const out = await callUrl(`${SUPABASE_URL}/storage/v1/bucket`, { method: "POST", body: JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "storage_update_bucket") {
-      const bucket = String(input.bucket ?? "");
-      if (!bucket) return json({ ok: false, error: "bucket is required" }, 400);
-      const out = await callUrl(`${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(bucket)}`, { method: "PUT", body: JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "storage_delete_bucket") {
-      const bucket = String(input.bucket ?? "");
-      if (!bucket) return json({ ok: false, error: "bucket is required" }, 400);
-      const out = await callUrl(`${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(bucket)}`, { method: "DELETE" });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "storage_list_objects") {
-      const bucket = String(input.bucket ?? "");
-      if (!bucket) return json({ ok: false, error: "bucket is required" }, 400);
-      const out = await callUrl(`${SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`, { method: "POST", body: JSON.stringify(input.payload ?? { prefix: "", limit: 100, offset: 0 }) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "storage_delete_objects") {
-      const bucket = String(input.bucket ?? "");
-      const prefixes = Array.isArray(input.prefixes) ? input.prefixes.map(String) : [];
-      if (!bucket || !prefixes.length) return json({ ok: false, error: "bucket and prefixes are required" }, 400);
-      const out = await callUrl(`${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}`, { method: "DELETE", body: JSON.stringify({ prefixes }) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "management_call") {
-      const path = String(input.path ?? "");
-      const method = String(input.method ?? "GET").toUpperCase();
-      if (!new Set(["GET","POST","PUT","PATCH","DELETE"]).has(method)) return json({ ok: false, error: "unsupported management method" }, 400);
-      const out = await management(path, { method, body: method === "GET" ? undefined : JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    const table = String(input.table ?? "");
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) return json({ ok: false, error: "invalid table" }, 400);
-    const filters = (input.filters ?? undefined) as Record<string, unknown> | undefined;
-    const filterQuery = buildFilters(filters);
-
-    if (action === "read") {
-      const select = typeof input.select === "string" ? input.select : "*";
-      const limit = Math.min(Math.max(Number(input.limit ?? 100), 1), 1000);
-      const qs = new URLSearchParams();
-      qs.set("select", select);
-      qs.set("limit", String(limit));
-      const fq = filterQuery ? `&${filterQuery}` : "";
-      const out = await rest(`/rest/v1/${encodeURIComponent(table)}?${qs.toString()}${fq}`, { method: "GET" });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "insert") {
-      const out = await rest(`/rest/v1/${encodeURIComponent(table)}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "upsert") {
-      const qs = typeof input.on_conflict === "string" && input.on_conflict ? `?on_conflict=${encodeURIComponent(input.on_conflict)}` : "";
-      const out = await rest(`/rest/v1/${encodeURIComponent(table)}${qs}`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "update") {
-      if (!filterQuery) return json({ ok: false, error: "update requires filters" }, 400);
-      const out = await rest(`/rest/v1/${encodeURIComponent(table)}?${filterQuery}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(input.payload ?? {}) });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    if (action === "delete") {
-      if (!filterQuery) return json({ ok: false, error: "delete requires filters; full-table delete blocked" }, 400);
-      const out = await rest(`/rest/v1/${encodeURIComponent(table)}?${filterQuery}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
-      return json({ ok: out.ok, action, result: out.body }, out.status);
-    }
-
-    return json({ ok: false, error: "unsupported action" }, 400);
-  } catch (e) {
-    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 400);
-  }
-});
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {status,headers:{"content-type":"application/json; charset=utf-8"}});
+function auth(req: Request): boolean { const supplied=req.headers.get("x-xiaoe-bridge-token")??""; return !!BRIDGE_TOKEN&&supplied===BRIDGE_TOKEN; }
+const allowedOps=new Set(["eq","neq","gt","gte","lt","lte","like","ilike","is","in"]);
+function buildFilters(filters:Record<string,unknown>|undefined):string{if(!filters||Object.keys(filters).length===0)return"";const sp=new URLSearchParams();for(const[column,raw]of Object.entries(filters)){let op="eq",value:unknown=raw;if(raw&&typeof raw==="object"&&!Array.isArray(raw)){const r=raw as Record<string,unknown>;op=typeof r.op==="string"?r.op:"eq";value=r.value;}if(!allowedOps.has(op))throw new Error(`unsupported filter operator: ${op}`);if(op==="in"){if(!Array.isArray(value))throw new Error("in filter requires array value");sp.set(column,`in.(${value.map(v=>String(v)).join(",")})`);}else sp.set(column,`${op}.${String(value)}`);}return sp.toString();}
+async function callUrl(url:string,init:RequestInit={},mode:"service"|"management"="service"){const headers=new Headers(init.headers??{});headers.set("content-type","application/json");if(mode==="management"){if(!MANAGEMENT_TOKEN)return{status:503,ok:false,body:{error:"management token not configured"}};headers.set("authorization",`Bearer ${MANAGEMENT_TOKEN}`);}else{headers.set("apikey",SERVICE_ROLE_KEY);headers.set("authorization",`Bearer ${SERVICE_ROLE_KEY}`);}const res=await fetch(url,{...init,headers});const text=await res.text();let body:unknown=text;try{body=text?JSON.parse(text):null;}catch{}return{status:res.status,ok:res.ok,body};}
+async function rest(path:string,init:RequestInit={}){const headers=new Headers(init.headers??{});headers.set("accept-profile","public");headers.set("content-profile","public");return callUrl(`${SUPABASE_URL}${path}`,{...init,headers},"service");}
+function managementPathAllowed(path:string):boolean{if(!path.startsWith("/v1/"))return false;const prefix=`/v1/projects/${PROJECT_REF}`;return path===prefix||path.startsWith(prefix+"/")||path.startsWith(prefix+"?");}
+async function management(path:string,init:RequestInit={}){if(!managementPathAllowed(path))return{status:403,ok:false,body:{error:"management path blocked: Commercial project only"}};return callUrl(`https://api.supabase.com${path}`,init,"management");}
+async function rpc(fn:string,params:unknown){return rest(`/rest/v1/rpc/${encodeURIComponent(fn)}`,{method:"POST",body:JSON.stringify(params??{})});}
+Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response(null,{status:204});if(!auth(req))return json({ok:false,error:"unauthorized"},401);if(!SUPABASE_URL||!SERVICE_ROLE_KEY)return json({ok:false,error:"bridge runtime not configured"},500);let input:Record<string,unknown>={};try{input=req.method==="GET"?{}:await req.json();}catch{return json({ok:false,error:"invalid json"},400);}const action=String(input.action??(req.method==="GET"?"health":""));try{
+if(action==="health")return json({ok:true,bridge:"xiaoe-voucher-bridge",project_ref:PROJECT_REF,profile:"commercial_direct_connector_parity_v1",management_plane:MANAGEMENT_TOKEN?"ready":"credential_pending",actions:["health","read","insert","update","upsert","delete","rpc","sql_query","sql_execute","auth_list_users","auth_get_user","auth_create_user","auth_update_user","auth_delete_user","storage_list_buckets","storage_create_bucket","storage_update_bucket","storage_delete_bucket","storage_list_objects","storage_delete_objects","management_call"]});
+if(action==="rpc"){const fn=String(input.function??"");if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fn))return json({ok:false,error:"invalid rpc function"},400);const out=await rpc(fn,input.params??{});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="sql_query"){const sql=String(input.sql??"").trim();if(!sql)return json({ok:false,error:"sql is required"},400);const out=await rpc("xiaoe_admin_query",{p_sql:sql});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="sql_execute"){const sql=String(input.sql??"").trim();if(!sql)return json({ok:false,error:"sql is required"},400);const out=await rpc("xiaoe_admin_execute",{p_sql:sql});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="auth_list_users"){const page=Math.max(Number(input.page??1),1),perPage=Math.min(Math.max(Number(input.per_page??50),1),1000);const out=await callUrl(`${SUPABASE_URL}/auth/v1/admin/users?page=${page}&per_page=${perPage}`);return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="auth_get_user"){const userId=String(input.user_id??"");if(!/^[0-9a-f-]{36}$/i.test(userId))return json({ok:false,error:"invalid user_id"},400);const out=await callUrl(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`);return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="auth_create_user"){const out=await callUrl(`${SUPABASE_URL}/auth/v1/admin/users`,{method:"POST",body:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="auth_update_user"){const userId=String(input.user_id??"");if(!/^[0-9a-f-]{36}$/i.test(userId))return json({ok:false,error:"invalid user_id"},400);const out=await callUrl(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`,{method:"PUT",body:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="auth_delete_user"){const userId=String(input.user_id??"");if(!/^[0-9a-f-]{36}$/i.test(userId))return json({ok:false,error:"invalid user_id"},400);const softDelete=Boolean(input.soft_delete??false);const out=await callUrl(`${SUPABASE_URL}/auth/v1/admin/users/${userId}${softDelete?"?should_soft_delete=true":""}`,{method:"DELETE"});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="storage_list_buckets"){const out=await callUrl(`${SUPABASE_URL}/storage/v1/bucket`);return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="storage_create_bucket"){const out=await callUrl(`${SUPABASE_URL}/storage/v1/bucket`,{method:"POST",body:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="storage_update_bucket"){const bucket=String(input.bucket??"");if(!bucket)return json({ok:false,error:"bucket is required"},400);const out=await callUrl(`${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(bucket)}`,{method:"PUT",body:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="storage_delete_bucket"){const bucket=String(input.bucket??"");if(!bucket)return json({ok:false,error:"bucket is required"},400);const out=await callUrl(`${SUPABASE_URL}/storage/v1/bucket/${encodeURIComponent(bucket)}`,{method:"DELETE"});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="storage_list_objects"){const bucket=String(input.bucket??"");if(!bucket)return json({ok:false,error:"bucket is required"},400);const out=await callUrl(`${SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`,{method:"POST",body:JSON.stringify(input.payload??{prefix:"",limit:100,offset:0})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="storage_delete_objects"){const bucket=String(input.bucket??""),prefixes=Array.isArray(input.prefixes)?input.prefixes.map(String):[];if(!bucket||!prefixes.length)return json({ok:false,error:"bucket and prefixes are required"},400);const out=await callUrl(`${SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}`,{method:"DELETE",body:JSON.stringify({prefixes})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="management_call"){const path=String(input.path??""),method=String(input.method??"GET").toUpperCase();if(!new Set(["GET","POST","PUT","PATCH","DELETE"]).has(method))return json({ok:false,error:"unsupported management method"},400);const out=await management(path,{method,body:method==="GET"?undefined:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+const table=String(input.table??"");if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table))return json({ok:false,error:"invalid table"},400);const filters=(input.filters??undefined)as Record<string,unknown>|undefined,filterQuery=buildFilters(filters);
+if(action==="read"){const select=typeof input.select==="string"?input.select:"*",limit=Math.min(Math.max(Number(input.limit??100),1),1000),qs=new URLSearchParams();qs.set("select",select);qs.set("limit",String(limit));const fq=filterQuery?`&${filterQuery}`:"";const out=await rest(`/rest/v1/${encodeURIComponent(table)}?${qs.toString()}${fq}`,{method:"GET"});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="insert"){const out=await rest(`/rest/v1/${encodeURIComponent(table)}`,{method:"POST",headers:{Prefer:"return=representation"},body:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="upsert"){const qs=typeof input.on_conflict==="string"&&input.on_conflict?`?on_conflict=${encodeURIComponent(input.on_conflict)}`:"";const out=await rest(`/rest/v1/${encodeURIComponent(table)}${qs}`,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=representation"},body:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="update"){if(!filterQuery)return json({ok:false,error:"update requires filters"},400);const out=await rest(`/rest/v1/${encodeURIComponent(table)}?${filterQuery}`,{method:"PATCH",headers:{Prefer:"return=representation"},body:JSON.stringify(input.payload??{})});return json({ok:out.ok,action,result:out.body},out.status);}
+if(action==="delete"){if(!filterQuery)return json({ok:false,error:"delete requires filters; full-table delete blocked"},400);const out=await rest(`/rest/v1/${encodeURIComponent(table)}?${filterQuery}`,{method:"DELETE",headers:{Prefer:"return=representation"}});return json({ok:out.ok,action,result:out.body},out.status);}
+return json({ok:false,error:"unsupported action"},400);
+}catch(e){return json({ok:false,error:e instanceof Error?e.message:String(e)},400);}});
