@@ -144,7 +144,7 @@
     const applyAuto = () => {
       const input = document.getElementById('newPartnerCode');
       if (!input) return false;
-      input.value = 'AUTO';
+      if (input.value !== 'AUTO') input.value = 'AUTO';
       input.readOnly = true;
       input.setAttribute('aria-readonly', 'true');
       input.setAttribute('placeholder', 'System generates P001, P002, ...');
@@ -160,12 +160,10 @@
       }
       return true;
     };
-    if (applyAuto()) return;
-    let attempts = 0;
-    const timer = setInterval(() => {
-      attempts += 1;
-      if (applyAuto() || attempts >= 40) clearInterval(timer);
-    }, 250);
+    applyAuto();
+    if (!window.__commercialPartnerCodeAutoTimer) {
+      window.__commercialPartnerCodeAutoTimer = setInterval(applyAuto, 500);
+    }
   }
 
   function slugifyCompanyName(value) {
