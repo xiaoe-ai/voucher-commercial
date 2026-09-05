@@ -1,0 +1,19 @@
+name: Commercial Phase 2C Live Function Inspect
+
+on:
+  push:
+    paths:
+      - '.github/commercial-phase2c-live-inspect-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: hukihbcyyqhanaqrizvm
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.hukihbcyyqhana
