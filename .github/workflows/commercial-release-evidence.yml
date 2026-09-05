@@ -1,0 +1,89 @@
+name: Commercial Release Evidence Audit
+
+on:
+  push:
+    paths:
+      - '.github/commercial-release-evidence-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deep legacy source audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          exclude_prefixes = ('.git/', '.github/workflows/commercial-release-evidence.yml')
+          patterns = {
+            'Evolution Optical': re.compile(r'Evolution Optical', re.I),
+            'EOVoucher': re.compile(r'EOVoucher', re.I),
+            'eo-partner-build': re.compile(r'eo-partner-build', re.I),
+            'hardcoded outlet': re.compile(r'The Mines Shopping Mall|Damai Perdana 6/1E|CS Bangi|Pertama Shopping Complex', re.I),
+            'fixed Malaysia locale': re.compile(r'en-MY'),
+          }
+          findings=[]
+          allowed_files={
+            'COMMERCIAL_LIVE_SCHEMA_AUDIT_20260905.md',
+            'COMMERCIAL_RELEASE_GATE_V1.md',
+            'commercial-brand.js',
+          }
+          for path in Path('.').rglob('*'):
+            if not path.is_file(): continue
+            rel=path.as_posix()
+            if rel.startswith('.git/'): continue
+            try: text=path.read_text(errors='ignore')
+            except Exception: continue
+            for label,rx in patterns.items():
+              if rx.search(text):
+                if rel in allowed_files:
+                  continue
+                findings.append((rel,label))
+          if findings:
+            print('LEGACY_FINDINGS')
+            for f in findings: print(f'{f[0]} :: {f[1]}')
+            raise SystemExit(1)
+          print('DEEP_LEGACY_AUDIT=PASS')
+          PY
+
+      - name: Verify public Pages routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://xiaoe-ai.github.io/voucher-commercial'
+          routes=(
+            '/'
+            '/admin.html'
+            '/partner.html'
+            '/staff.html'
+            '/company-setup.html'
+          )
+          for route in "${routes[@]}"; do
+            code=$(curl -L -sS -o /tmp/page.html -w '%{http_code}' "$base$route")
+            echo "$route -> $code"
+            test "$code" = '200'
+            test -s /tmp/page.html
+          done
+          echo 'PUBLIC_PAGES_ROUTES=PASS'
+
+      - name: Verify manifests and canonical frontend identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in manifest-admin.json manifest-partner.json manifest-staff.json; do
+            test -s "$f"
+            python -m json.tool "$f" >/dev/null
+          done
+          grep -q 'commercial-partner-build' partner.html
+          ! grep -q 'EOVoucherThemes' partner.html
+          ! grep -q 'const OUTLETS=' partner.html
+          grep -q 'window.CommercialVoucherThemes=' voucher-theme-system-v1.js
+          echo 'FRONTEND_CANONICAL_IDENTIFIERS=PASS'
