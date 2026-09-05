@@ -171,25 +171,25 @@ revoke all on function public.svc_admin_retire_voucher_version(uuid,uuid,text)
 grant execute on function public.svc_admin_retire_voucher_version(uuid,uuid,text)
   to service_role;
 
--- Service-role admin engine wrappers.
-revoke all on function public.admin_engine_allocate(uuid,uuid,integer,timestamptz,timestamptz)
+-- Service-role admin engine wrappers. Signatures must match 003E exactly.
+revoke all on function public.admin_engine_allocate(uuid,uuid,integer,uuid)
   from public, anon, authenticated, service_role;
-grant execute on function public.admin_engine_allocate(uuid,uuid,integer,timestamptz,timestamptz)
+grant execute on function public.admin_engine_allocate(uuid,uuid,integer,uuid)
   to service_role;
 
-revoke all on function public.admin_engine_allocate_all(uuid,integer,timestamptz,timestamptz)
+revoke all on function public.admin_engine_allocate_all(uuid,integer,uuid)
   from public, anon, authenticated, service_role;
-grant execute on function public.admin_engine_allocate_all(uuid,integer,timestamptz,timestamptz)
+grant execute on function public.admin_engine_allocate_all(uuid,integer,uuid)
   to service_role;
 
-revoke all on function public.admin_engine_revoke_unissued(uuid,integer,text)
+revoke all on function public.admin_engine_revoke_unissued(uuid,integer,text,uuid)
   from public, anon, authenticated, service_role;
-grant execute on function public.admin_engine_revoke_unissued(uuid,integer,text)
+grant execute on function public.admin_engine_revoke_unissued(uuid,integer,text,uuid)
   to service_role;
 
-revoke all on function public.admin_engine_retire_version(uuid,text)
+revoke all on function public.admin_engine_retire_version(uuid,text,uuid)
   from public, anon, authenticated, service_role;
-grant execute on function public.admin_engine_retire_version(uuid,text)
+grant execute on function public.admin_engine_retire_version(uuid,text,uuid)
   to service_role;
 
 -- -----------------------------------------------------------------------------
