@@ -101,6 +101,7 @@
     installLegacyVisibleGuard();
     installPartnerCodeAutoUI();
     installAdminAuthNavGuard();
+    installAdminVoucherModule();
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
 
     const dbClient = getDb();
@@ -199,6 +200,16 @@
     }
   }
 
+  function installAdminVoucherModule() {
+    if (!/\/admin\.html(?:$|[?#])/i.test(location.pathname + location.search + location.hash) && !location.pathname.endsWith('/admin.html')) return;
+    if (document.querySelector('script[data-admin-voucher-all-partners]')) return;
+    const script = document.createElement('script');
+    script.src = 'admin-voucher-all-partners.js';
+    script.defer = true;
+    script.dataset.adminVoucherAllPartners = 'true';
+    document.head.appendChild(script);
+  }
+
   function slugifyCompanyName(value) {
     const slug = String(value || DEFAULTS.companyName)
       .trim()
@@ -267,6 +278,7 @@
     scrubLegacyVisibleText();
     installPartnerCodeAutoUI();
     installAdminAuthNavGuard();
+    installAdminVoucherModule();
   }
 
   async function reset() {
@@ -276,6 +288,7 @@
     installLegacyVisibleGuard();
     installPartnerCodeAutoUI();
     installAdminAuthNavGuard();
+    installAdminVoucherModule();
     const dbClient = getDb();
     if (!dbClient) return;
     try { await dbClient.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
@@ -303,6 +316,7 @@
     installLegacyVisibleGuard();
     installPartnerCodeAutoUI();
     installAdminAuthNavGuard();
+    installAdminVoucherModule();
     await load();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
