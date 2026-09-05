@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0f172a">
-<title>Evolution Optical • Admin Portal</title>
+<title>Commercial Voucher • Admin Portal</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -35,10 +35,10 @@
 </style>
 </head>
 <body>
-<header class="top"><div class="topin"><div class="brand"><h1>EVOLUTION OPTICAL</h1><p>Admin Voucher Portal</p></div><button id="logout" class="ghost hidden">Logout</button></div></header>
+<header class="top"><div class="topin"><div class="brand"><h1>COMMERCIAL VOUCHER</h1><p>Admin Voucher Portal</p></div><button id="logout" class="ghost hidden">Logout</button></div></header>
 <main class="wrap">
 <section id="loginCard" class="card">
-<h2>Admin Login</h2><p class="sub">Sign in with an authorised Evolution Optical admin account.</p>
+<h2>Admin Login</h2><p class="sub">Sign in with an authorised Commercial Voucher admin account.</p>
 <div class="field"><label>Email</label><input id="email" type="email" autocomplete="username"></div>
 <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password"></div>
 <button id="login" class="btn loginbtn">SIGN IN</button><div id="loginMsg"></div>
@@ -58,7 +58,7 @@
   <div class="field"><label>Temporary Password</label><input id="newPartnerPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters"></div>
   <div class="field wide"><label>Initial Voucher Limit</label><input id="newPartnerLimit" type="number" min="0" step="1" value="100"></div>
   <div class="field wide"><label>Voucher Claim Branch Permission</label>
-    <label class="claim-option"><input id="newPartnerAllBranches" type="checkbox" checked> <span><b>All Evolution Optical branches</b><br><small>Admin controls this permission. Partner cannot change it.</small></span></label>
+    <label class="claim-option"><input id="newPartnerAllBranches" type="checkbox" checked> <span><b>All redemption locations</b><br><small>Admin controls this permission. Partner cannot change it.</small></span></label>
     <div id="newPartnerClaimBranches" class="claim-grid"></div>
   </div>
 </div>
@@ -173,7 +173,7 @@ async function toggleClaimEditor(id){
   await ensureClaimBranchOptions();
   const access=await getPartnerClaimAccess(id);
   const selected=new Set(access.branch_codes||[]);
-  panel.innerHTML=`<label class="claim-option"><input id="claim-all-${id}" type="checkbox" ${access.all_branches?'checked':''}><span><b>All Evolution Optical branches</b></span></label><div id="claim-grid-${id}" class="claim-grid">${claimBranchOptions.map(b=>`<label class="claim-option"><input class="claim-edit-${id}" type="checkbox" value="${esc(b.branch_code)}" ${selected.has(b.branch_code)?'checked':''}><span>${esc(b.branch_name||b.branch_code)}</span></label>`).join('')}</div><div class="claim-actions"><button class="btn small green" onclick="saveClaimEditor('${id}')">Save Claim Branches</button><button class="btn small" onclick="toggleClaimEditor('${id}')">Close</button></div><div id="claim-msg-${id}"></div>`;
+  panel.innerHTML=`<label class="claim-option"><input id="claim-all-${id}" type="checkbox" ${access.all_branches?'checked':''}><span><b>All redemption locations</b></span></label><div id="claim-grid-${id}" class="claim-grid">${claimBranchOptions.map(b=>`<label class="claim-option"><input class="claim-edit-${id}" type="checkbox" value="${esc(b.branch_code)}" ${selected.has(b.branch_code)?'checked':''}><span>${esc(b.branch_name||b.branch_code)}</span></label>`).join('')}</div><div class="claim-actions"><button class="btn small green" onclick="saveClaimEditor('${id}')">Save Claim Branches</button><button class="btn small" onclick="toggleClaimEditor('${id}')">Close</button></div><div id="claim-msg-${id}"></div>`;
   panel.classList.remove("hidden");
   const allBox=$("claim-all-"+id); const sync=()=>{const on=allBox.checked;panel.querySelectorAll('.claim-edit-'+id).forEach(x=>x.disabled=on);$("claim-grid-"+id).style.opacity=on?'.45':'1'}; allBox.onchange=sync;sync();
  }catch(e){msg($("partnerMsg"),"Unable to load claim branches: "+e.message);}
@@ -186,7 +186,7 @@ async function saveClaimEditor(id){
 }
 async function refreshClaimSummary(id){
  const node=$("claim-summary-"+id);if(!node)return;
- try{const a=await getPartnerClaimAccess(id);if(a.all_branches){node.textContent="Claim: All Evolution Optical branches";}else{const names=claimBranchOptions.filter(b=>(a.branch_codes||[]).includes(b.branch_code)).map(b=>b.branch_name||b.branch_code);node.textContent="Claim: "+(names.join(", ")||"No branch assigned");}}catch(_){node.textContent="Claim permission unavailable";}
+ try{const a=await getPartnerClaimAccess(id);if(a.all_branches){node.textContent="Claim: All redemption locations";}else{const names=claimBranchOptions.filter(b=>(a.branch_codes||[]).includes(b.branch_code)).map(b=>b.branch_name||b.branch_code);node.textContent="Claim: "+(names.join(", ")||"No branch assigned");}}catch(_){node.textContent="Claim permission unavailable";}
 }
 
 async function loadPartners(){
@@ -284,7 +284,7 @@ function partnerNameFor(v){
 }
 
 function branchLabel(v){
- if(v.all_branches===true) return "All Evolution Optical branches";
+ if(v.all_branches===true) return "All redemption locations";
 
  const ids = voucherBranches
    .filter(x => x.voucher_id === v.id)
@@ -296,7 +296,7 @@ function branchLabel(v){
    .map(b => b.branch_name || b.branch_code)
    .filter(Boolean);
 
- return names.length ? names.join(", ") : "Specific Evolution Optical branch(es)";
+ return names.length ? names.join(", ") : "Specific Commercial Voucher branch(es)";
 }
 function redeemedBranchLabel(v){
  const r = redemptions.find(x => x.voucher_id === v.id);
