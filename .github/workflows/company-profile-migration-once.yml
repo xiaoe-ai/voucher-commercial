@@ -43,9 +43,9 @@ jobs:
         with:
           version: latest
 
-      - name: Link Commercial project
+      - name: Link Commercial project (debug)
         shell: bash
-        run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+        run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD" --debug
 
       - name: Dry run migration
         shell: bash
