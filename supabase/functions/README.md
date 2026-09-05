@@ -1,127 +1,106 @@
 # Commercial Voucher Edge Functions
 
-Status: CANONICALIZATION IN PROGRESS
+Status: LIVE SOURCE ARCHIVED / DEPLOYMENT REHEARSAL PENDING
 Date: 2026-09-05
 Repository: `xiaoe-ai/voucher-commercial`
 Commercial Supabase project ref: `hukihbcyyqhanaqrizvm`
 
 This directory is the canonical home for Commercial Voucher Supabase Edge Function source.
 
-The live Commercial application depends on the functions listed below. Do not mark Commercial backend as fully rebuildable until every required function has canonical source, deployment settings, required secret names and authorization behavior captured and tested here.
+On 2026-09-05 the Commercial Supabase Management API was connected directly and the live source inventory for project `hukihbcyyqhanaqrizvm` was verified. All nine active Commercial Edge Functions are readable from the live project and their source has been archived into this repository. No live deployment was changed during this archive pass.
 
-## Required functions
+## Live inventory and canonical source
 
 ### `create-partner`
-Purpose:
-- provision a Partner account / access path used by Commercial Admin
-
-Required canonical evidence:
-- `supabase/functions/create-partner/index.ts`
-- JWT verification setting
-- required secret names only
-- caller authorization checks
-- expected request / response contract
-
-Status: SOURCE REVIEW IN PROGRESS
-Notes:
-- EVO reference source exists, but it is not safe to copy directly because it uses legacy `admin_users` authorization and a hard-coded `EVO12345678` initial password.
-- Commercial canonical provisioning RPC equivalence must be verified before this function is written.
+- Live status: ACTIVE
+- Live version: 10
+- `verify_jwt=true`
+- Canonical source: `supabase/functions/create-partner/index.ts`
+- Live behavior uses `current_operational_realm()` and `service_provision_partner`.
+- Commercial-neutral; no legacy `admin_users` or hard-coded EVO password path in the live source.
 
 ### `create-staff`
-Purpose:
-- provision Staff access used by the Staff portal
-
-Required canonical evidence:
-- `supabase/functions/create-staff/index.ts`
-- JWT verification setting
-- required secret names only
-- caller authorization checks
-- relationship with `staff_users`
-
-Status: SOURCE REVIEW IN PROGRESS
-Notes:
-- EVO reference source uses `current_operational_realm` and `admin_provision_staff`; Commercial canonical equivalence still needs verification.
+- Live status: ACTIVE
+- Live version: 11
+- `verify_jwt=true`
+- Canonical source: `supabase/functions/create-staff/index.ts`
+- Live behavior authorizes Admin or Manager via `current_operational_realm()` and provisions through `admin_provision_staff`.
 
 ### `reset-partner-password`
-Purpose:
-- privileged Partner password reset flow used by Admin tooling
-
-Status: SOURCE REVIEW IN PROGRESS
-Notes:
-- EVO reference source uses legacy `admin_users`; Commercial authorization must be mapped to canonical `partner_users` / Admin role semantics before canonicalization.
-
-### `admin-set-partner-staff-limit`
-Purpose:
-- Admin-controlled Partner Staff capacity / limits
-
-Status: SOURCE REVIEW IN PROGRESS
+- Live status: ACTIVE
+- Live version: 7
+- `verify_jwt=true`
+- Canonical source: `supabase/functions/reset-partner-password/index.ts`
+- Admin authorization is based on active `partner_users.role='admin'`.
+- Password material is not written to audit logs.
 
 ### `manage-partner-staff`
-Purpose:
-- Partner Admin Staff management flow
-- current Partner portal invokes this function for create / rename / password reset / status / removal operations
+- Live status: ACTIVE
+- Live version: 7
+- `verify_jwt=true`
+- Canonical source: `supabase/functions/manage-partner-staff/index.ts`
+- Partner Admin is scoped to its own `partner_id` before Staff create/rename/reset/suspend/activate/remove operations.
 
-Required canonical evidence:
-- action allow-list
-- authorization checks proving caller belongs to the correct Partner
-- service-role usage, if any, isolated inside the Edge Function
-- no cross-partner mutation path
-
-Status: SOURCE REVIEW IN PROGRESS
-Notes:
-- EVO reference source has strong same-partner scoping and is useful as a design reference, but its RPC dependencies still need Commercial canonical verification.
+### `admin-set-partner-staff-limit`
+- Live status: ACTIVE
+- Live version: 6
+- `verify_jwt=true`
+- Canonical source: `supabase/functions/admin-set-partner-staff-limit/index.ts`
+- Admin-only Staff-limit update with audit entry.
 
 ### `voucher-engine-admin`
-Purpose:
-- privileged Voucher Engine administration
+- Live status: ACTIVE
+- Live version: 9
+- `verify_jwt=true`
+- Canonical source: `supabase/functions/voucher-engine-admin/index.ts`
+- Supports Admin template/version/allocation/revoke/retire operations through service RPCs.
 
-Required canonical evidence:
-- supported action allow-list
-- Admin authorization
-- database mutation boundaries
-- request / response contract
+### `bootstrap-admin`
+- Live status: ACTIVE
+- Live version: 5
+- `verify_jwt=false`
+- Canonical source: `supabase/functions/bootstrap-admin/index.ts`
+- Custom one-time setup gate is enforced by `admin_bootstrap_status` and `service_bootstrap_first_admin`.
 
-Status: SOURCE MISSING / EXTRACTION REQUIRED
+### `voucher-engine`
+- Live status: ACTIVE
+- Live version: 5
+- `verify_jwt=true`
+- Canonical source: `supabase/functions/voucher-engine/index.ts`
+- Admin-only wrapper for allocate / allocate_all / revoke_unissued / retire_version.
 
 ### `xiaoe-voucher-bridge`
-Purpose:
-- Commercial runtime management bridge used by XiaoE external orchestration
+- Live status: ACTIVE
+- Live version: 4
+- `verify_jwt=false`
+- Canonical source: `supabase/functions/xiaoe-voucher-bridge/index.ts`
+- Canonical file was aligned to the verified live v4 source.
+- Hard-coded project identity is only Commercial project ref `hukihbcyyqhanaqrizvm`.
+- Dedicated secret name: `XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN`.
+- Supported actions: `health`, `read`, `insert`, `update`, `upsert`, `delete`, `rpc`.
+- Full-table delete is blocked; update/delete require filters.
 
-Required canonical evidence:
-- Commercial-only target lock
-- accepted operation allow-list
-- bridge-token authentication behavior
-- no Production / Stage / Daughter fallback
-- required secret names only
+## Canonicalization rules
 
-Status: CANONICAL SOURCE PRESENT / NOT YET DEPLOYED
-Canonical source:
-- `supabase/functions/xiaoe-voucher-bridge/index.ts`
-- commit `f9dc976d0f6b39834278abf9d93d9cbf9faea1b9`
-Verified design:
-- hard-locks `target=commercial`
-- hard-locks project ref `hukihbcyyqhanaqrizvm`
-- accepts `health`, `read`, `insert`, `update`, `upsert`, `delete`, `rpc`
-- authenticates with dedicated Commercial bridge token header `x-xiaoe-bridge-token`
-- uses only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and the dedicated Commercial bridge-token env name(s)
-- contains no EVO Production / Stage / Daughter fallback
+- Live Commercial source is the primary source of truth for this archive pass.
+- Secret values are never committed; only environment variable names may appear in source.
+- No EVO Production / Stage / Daughter source is treated as canonical for Commercial.
+- Historical EVO/Stage code may be used only as read-only reference when diagnosing differences.
 
-## Source extraction rule
+## Recovery status
 
-Do not fabricate live-equivalent source from frontend assumptions alone.
+PASS:
+- live Edge Function inventory readable from Commercial Supabase Management API
+- all nine live source files archived in GitHub
+- `verify_jwt` settings captured
+- Commercial bridge source aligned to live v4
+- secret values not committed
 
-Acceptable ways to canonicalize a function:
-1. extract verified live source from the Commercial Supabase project, or
-2. rebuild the function from a reviewed specification and then deploy / test it in an isolated Commercial target before treating it as equivalent.
+PENDING:
+- deploy these archived sources into an isolated recovery target
+- restore required environment secret names in the isolated target
+- verify Admin / Partner / Staff authorization after deployment
+- run Admin -> Partner -> Staff -> issue -> verify -> redeem recovery flow
+- verify XiaoE bridge health/read against the rebuilt target
 
-Reference code from EVO Production or Voucher Stage may be inspected read-only, but it must not be copied blindly. Any imported logic must be made Commercial-neutral and verified against the Commercial dependency manifest.
-
-## Minimum release gate
-
-Before `COMMERCIAL_READY`:
-- every required function above has canonical source in this directory
-- deployment configuration is documented
-- secret VALUES are not committed
-- Admin / Partner / Staff authorization tests pass
-- XiaoE bridge health/read passes against the rebuilt target
-- no cross-project fallback exists
+Do not mark the full application recovery gate PASS until the isolated Edge Function deployment and post-recovery E2E checks pass.
