@@ -28,7 +28,6 @@ jobs:
                   raise SystemExit(f'missing expected fragment: {label}')
               return text.replace(old, new)
 
-          # Admin surfaces
           for name in ['admin.html','admin-core.html']:
               p=Path(name)
               s=p.read_text()
@@ -38,18 +37,17 @@ jobs:
               s=s.replace('toLocaleString("en-MY")','toLocaleString(navigator.language||"en-US")')
               s=s.replace('Cannot set below RM60 vouchers already issued.','Cannot set below vouchers already issued.')
               s=s.replace('RM60 total voucher limit','legacy total voucher limit')
+              s=s.replace('RM60','legacy voucher')
               s=s.replace('`RM${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `','`${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `')
               s=s.replace('`RM${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`','`${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`')
               s=s.replace('`evolution-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`','`commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`')
               p.write_text(s)
 
-          # Staff
           p=Path('staff.html'); s=p.read_text()
           s=s.replace('placeholder="EO-20260808-XXXXXXX"','placeholder="Enter voucher code"')
           s=s.replace('toLocaleString("en-MY",{','toLocaleString(navigator.language||"en-US",{')
           p.write_text(s)
 
-          # Voucher Engine
           p=Path('voucher-engine.html'); s=p.read_text()
           s=replace_required(s,'name="eo-voucher-engine-build"','name="commercial-voucher-engine-build"','voucher engine build meta')
           s=replace_required(s,'window.EOVoucherThemes','window.CommercialVoucherThemes','voucher theme global')
