@@ -2,7 +2,7 @@
 -- Status: REBUILD-ONLY / NOT FOR LIVE APPLY
 -- Layer: 003A Staff verification / redemption RPCs
 -- Source: verified live Commercial schema snapshot 2026-09-05
--- Customer-neutral: no EVO / Evolution Optical / Malaysia / Kuala Lumpur assumptions.
+-- Customer-neutral: no customer-specific or regional assumptions.
 
 create or replace function public.verify_voucher(p_voucher_code text)
 returns jsonb
