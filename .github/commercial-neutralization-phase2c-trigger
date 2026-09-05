@@ -1,2 +1,2 @@
-triggered_at=2026-09-05T18:15:00+08:00
-purpose=phase2c-rollback-only-dryrun-after-validation-fix
+triggered_at=2026-09-05T18:18:00+08:00
+purpose=phase2c-rollback-only-dryrun-safe-verifier
