@@ -1,0 +1,101 @@
+name: Commercial Runtime Frontend Neutralization
+
+on:
+  push:
+    paths:
+      - '.github/frontend-runtime-neutralization-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  neutralize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply guarded runtime neutralization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_required(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'missing expected fragment: {label}')
+              return text.replace(old, new)
+
+          # Admin surfaces
+          for name in ['admin.html','admin-core.html']:
+              p=Path(name)
+              s=p.read_text()
+              if 'name="eo-admin-build"' in s:
+                  s=s.replace('name="eo-admin-build"','name="commercial-admin-build"')
+              s=s.replace('toLocaleString("en-MY",{maximumFractionDigits:2})','toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})')
+              s=s.replace('toLocaleString("en-MY")','toLocaleString(navigator.language||"en-US")')
+              s=s.replace('Cannot set below RM60 vouchers already issued.','Cannot set below vouchers already issued.')
+              s=s.replace('RM60 total voucher limit','legacy total voucher limit')
+              s=s.replace('`RM${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `','`${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `')
+              s=s.replace('`RM${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`','`${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`')
+              s=s.replace('`evolution-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`','`commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`')
+              p.write_text(s)
+
+          # Staff
+          p=Path('staff.html'); s=p.read_text()
+          s=s.replace('placeholder="EO-20260808-XXXXXXX"','placeholder="Enter voucher code"')
+          s=s.replace('toLocaleString("en-MY",{','toLocaleString(navigator.language||"en-US",{')
+          p.write_text(s)
+
+          # Voucher Engine
+          p=Path('voucher-engine.html'); s=p.read_text()
+          s=replace_required(s,'name="eo-voucher-engine-build"','name="commercial-voucher-engine-build"','voucher engine build meta')
+          s=replace_required(s,'window.EOVoucherThemes','window.CommercialVoucherThemes','voucher theme global')
+          s=s.replace('placeholder="e.g. VOUCHER-RM100"','placeholder="e.g. VALUE-100"')
+          s=s.replace('placeholder="RM100 Voucher"','placeholder="100 Value Voucher"')
+          s=s.replace('Face Value (RM)','Face Value')
+          s=s.replace('Minimum Spend (RM)','Minimum Spend')
+          p.write_text(s)
+
+          forbidden={
+            'admin.html':['eo-admin-build','en-MY','RM60','evolution-vouchers-'],
+            'admin-core.html':['eo-admin-build','en-MY','RM60','evolution-vouchers-'],
+            'staff.html':['EO-20260808-XXXXXXX','en-MY'],
+            'voucher-engine.html':['eo-voucher-engine-build','EOVoucherThemes','VOUCHER-RM100','RM100 Voucher','Face Value (RM)','Minimum Spend (RM)'],
+          }
+          for name,tokens in forbidden.items():
+              text=Path(name).read_text()
+              bad=[x for x in tokens if x in text]
+              if bad: raise SystemExit(f'{name} cleanup incomplete: {bad}')
+          PY
+
+      - name: Static assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          grep -q 'commercial-admin-build' admin.html
+          grep -q 'commercial-voucher-engine-build' voucher-engine.html
+          grep -q 'window.CommercialVoucherThemes' voucher-engine.html
+          grep -q 'placeholder="Enter voucher code"' staff.html
+          ! grep -q 'en-MY' admin.html
+          ! grep -q 'en-MY' admin-core.html
+          ! grep -q 'en-MY' staff.html
+          ! grep -q 'RM60' admin.html
+          ! grep -q 'evolution-vouchers-' admin.html
+
+      - name: Commit neutralization
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- admin.html admin-core.html staff.html voucher-engine.html; then
+            echo 'No runtime frontend changes required.'
+            exit 0
+          fi
+          git config user.name 'Xiao-E-26'
+          git config user.email 'xiaoeai2026@gmail.com'
+          git add admin.html admin-core.html staff.html voucher-engine.html
+          git commit -m 'Neutralize remaining Commercial runtime frontend identifiers'
+          git push origin HEAD:main
