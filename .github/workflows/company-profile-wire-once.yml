@@ -1,0 +1,61 @@
+name: Wire company profile across portals
+
+on:
+  push:
+    paths:
+      - '.github/workflows/company-profile-wire-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inject shared brand runtime safely
+        shell: python
+        run: |
+          from pathlib import Path
+
+          files = ['index.html','admin.html','partner.html','staff.html','voucher-engine.html']
+          changed=[]
+          for name in files:
+              p=Path(name)
+              if not p.exists():
+                  continue
+              s=p.read_text(encoding='utf-8')
+              if 'commercial-brand.js' in s:
+                  continue
+              marker='<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>'
+              if marker in s:
+                  s=s.replace(marker, marker+'\n<script src="commercial-brand.js"></script>', 1)
+              else:
+                  head='</head>'
+                  if head not in s:
+                      raise SystemExit(f'No safe insertion point in {name}')
+                  s=s.replace(head, '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>\n<script src="commercial-brand.js"></script>\n</head>', 1)
+              p.write_text(s,encoding='utf-8')
+              changed.append(name)
+          print('Changed:', ', '.join(changed) if changed else 'none')
+
+      - name: Bump service worker cache
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('service-worker.js')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace("commercial-voucher-app-shell-v3","commercial-voucher-app-shell-v4")
+          p.write_text(s,encoding='utf-8')
+
+      - name: Commit
+        run: |
+          if git diff --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git config user.name 'xiaoe-white-label-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add index.html admin.html partner.html staff.html voucher-engine.html service-worker.js
+          git commit -m 'feat: wire shared company profile branding across portals'
+          git push
