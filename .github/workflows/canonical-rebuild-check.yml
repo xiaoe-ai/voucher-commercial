@@ -180,8 +180,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          pg_version=$(psql -Atqc 'show server_version')
+          canonical_files=$(find supabase/canonical -maxdepth 1 -type f -name '*.sql' | wc -l)
+          public_tables=$(psql -Atqc "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'")
+          public_functions=$(psql -Atqc "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'")
           echo "CANONICAL_REBUILD_OK=true"
-          echo "PostgreSQL=$(psql -Atqc 'show server_version')"
-          echo "Canonical_files=$(find supabase/canonical -maxdepth 1 -type f -name '*.sql' | wc -l)"
-          echo "Public_tables=$(psql -Atqc \"select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'\")"
-          echo "Public_functions=$(psql -Atqc \"select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'\")"
+          echo "PostgreSQL=$pg_version"
+          echo "Canonical_files=$canonical_files"
+          echo "Public_tables=$public_tables"
+          echo "Public_functions=$public_functions"
