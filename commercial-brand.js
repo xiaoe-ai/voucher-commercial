@@ -1,6 +1,8 @@
 (() => {
   'use strict';
   const KEY = 'commercial_voucher_company_profile_v1';
+  const SUPABASE_URL = 'https://hukihbcyyqhanaqrizvm.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_kpPFeGYpedq2auo01Zo50A_aiSjdeVh';
   const DEFAULTS = {
     companyName: 'Your Company',
     companyLegalName: '',
@@ -11,7 +13,33 @@
     logoUrl: ''
   };
 
-  function load() {
+  function fromRow(row = {}) {
+    return {
+      companyName: row.company_name || DEFAULTS.companyName,
+      companyLegalName: row.company_legal_name || '',
+      registrationNo: row.registration_no || '',
+      tagline: row.tagline || DEFAULTS.tagline,
+      phone: row.phone || '',
+      website: row.website || '',
+      logoUrl: row.logo_url || ''
+    };
+  }
+
+  function toRow(profile = {}) {
+    const p = { ...DEFAULTS, ...profile };
+    return {
+      id: 'default',
+      company_name: String(p.companyName || '').trim() || DEFAULTS.companyName,
+      company_legal_name: String(p.companyLegalName || '').trim() || null,
+      registration_no: String(p.registrationNo || '').trim() || null,
+      tagline: String(p.tagline || '').trim() || DEFAULTS.tagline,
+      phone: String(p.phone || '').trim() || null,
+      website: String(p.website || '').trim() || null,
+      logo_url: String(p.logoUrl || '').trim() || null
+    };
+  }
+
+  function loadLocal() {
     try {
       const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
       return { ...DEFAULTS, ...saved };
@@ -20,13 +48,60 @@
     }
   }
 
-  function save(profile) {
+  function saveLocal(profile) {
     const next = { ...DEFAULTS, ...(profile || {}) };
     next.companyName = String(next.companyName || '').trim() || DEFAULTS.companyName;
     localStorage.setItem(KEY, JSON.stringify(next));
+    return next;
+  }
+
+  function getDb() {
+    if (!window.supabase?.createClient) return null;
+    if (!window.__commercialCompanyProfileDb) {
+      window.__commercialCompanyProfileDb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+      });
+    }
+    return window.__commercialCompanyProfileDb;
+  }
+
+  async function loadRemote() {
+    const db = getDb();
+    if (!db) return null;
+    const { data, error } = await db.from('company_profile').select('*').eq('id', 'default').maybeSingle();
+    if (error) throw error;
+    return data ? fromRow(data) : null;
+  }
+
+  async function load() {
+    let profile = loadLocal();
+    try {
+      const remote = await loadRemote();
+      if (remote) {
+        profile = saveLocal(remote);
+        apply(profile);
+      }
+    } catch (_) {
+      apply(profile);
+    }
+    return profile;
+  }
+
+  async function save(profile) {
+    const next = saveLocal(profile);
     apply(next);
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
-    return next;
+
+    const db = getDb();
+    if (!db) return { profile: next, synced: false, reason: 'supabase_client_unavailable' };
+
+    try {
+      const { error } = await db.from('company_profile').upsert(toRow(next), { onConflict: 'id' });
+      if (error) throw error;
+      return { profile: next, synced: true };
+    } catch (error) {
+      return { profile: next, synced: false, reason: error?.message || 'sync_failed' };
+    }
   }
 
   function replaceText(root, from, to) {
@@ -38,7 +113,7 @@
     });
   }
 
-  function apply(profile = load()) {
+  function apply(profile = loadLocal()) {
     const name = profile.companyName || DEFAULTS.companyName;
     const legal = profile.companyLegalName || '';
     const tagline = profile.tagline || DEFAULTS.tagline;
@@ -66,7 +141,27 @@
     });
   }
 
-  window.CommercialCompanyProfile = { KEY, DEFAULTS, load, save, apply, reset: () => { localStorage.removeItem(KEY); apply(DEFAULTS); } };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => apply());
-  else apply();
+  async function reset() {
+    localStorage.removeItem(KEY);
+    apply(DEFAULTS);
+    const db = getDb();
+    if (!db) return;
+    try { await db.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
+  }
+
+  window.CommercialCompanyProfile = {
+    KEY,
+    DEFAULTS,
+    SUPABASE_URL,
+    load,
+    loadLocal,
+    loadRemote,
+    save,
+    apply,
+    reset
+  };
+
+  const boot = async () => { apply(loadLocal()); await load(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
