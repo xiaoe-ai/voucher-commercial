@@ -16,8 +16,9 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 ## B. Customer onboarding
 - [PASS] Customer can set company name and basic company details without source-code edits.
 - [PASS] Company profile supports cloud sync with local continuity fallback.
+- [PASS] Admin / Partner / Staff install entry pages and launch splash screens are wired to Company Profile so role entry surfaces display the customer company name rather than a fixed Commercial/EVO brand.
 - [PENDING] Verify first-customer bootstrap path from blank Commercial database to active Admin account.
-- [PENDING] Verify logo and brand propagation across Admin / Partner / Staff / voucher presentation.
+- [PENDING] Verify logo and brand propagation across Admin / Partner / Staff / voucher presentation on actual runtime/device surfaces.
 
 ## C. Authentication and roles
 - [PASS] Admin page contains Supabase Auth login and explicit Admin role check.
@@ -52,8 +53,8 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Dry-run is mandatory before apply.
 - [PASS] Apply requires explicit confirmation.
 - [PASS] SQL execution is transactional and Commercial-project locked.
-- [PENDING] Document backup snapshot procedure before first paying customer.
-- [PENDING] Run one restore / recovery rehearsal from documented backup.
+- [PASS] Backup and recovery procedure documented in `COMMERCIAL_BACKUP_RECOVERY_V1.md`, including backup scope, checkpoint triggers, isolated restore order, integrity checks and live-recovery safety rules.
+- [PENDING] Run one restore / recovery rehearsal from documented backup into an isolated target.
 
 ## H. Public/PWA entry points
 - [PASS] Admin portal exists.
@@ -61,6 +62,8 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Staff portal exists.
 - [PASS] Company Setup exists.
 - [PASS] Admin / Partner / Staff PWA manifests exist with independent start URLs, standalone mode, icons and home-screen labels.
+- [PASS] Admin / Partner / Staff install entry pages are Company Profile aware.
+- [PASS] Admin / Partner / Staff launch splash screens are Company Profile aware.
 - [PENDING] Verify public GitHub Pages routes load successfully on mobile and desktop.
 - [PENDING] Verify actual Admin / Partner / Staff install behavior on target devices.
 
@@ -69,12 +72,16 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - Commercial bridge health log: four consecutive `ok=true`, upstream HTTP 200 checks after bridge token configuration was corrected.
 - `manifest-admin.json`, `manifest-partner.json`, `manifest-staff.json` structurally verified.
 - `commercial-brand.js` hardened so legacy `evolution-vouchers-*` or generic Commercial export filenames are replaced at runtime with a customer-company-derived filename.
+- `commercial-brand.js` exposes `CommercialVoucherThemes` as the Commercial-neutral compatibility API while existing `EOVoucherThemes` callers remain operational during migration.
+- Admin / Partner / Staff install entry pages load `commercial-brand.js` and render Company Profile names.
+- Admin / Partner / Staff launch splash screens load `commercial-brand.js` and render Company Profile names.
+- `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
 ## Launch decision
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher already has the correct product architecture and most of the EVO-proven operating surface. Remaining blockers are end-to-end account/workflow validation, authorization/RLS verification, public-device verification, final deep legacy audit, and backup/restore rehearsal.
+Commercial Voucher already has the correct product architecture and most of the EVO-proven operating surface. Remaining blockers are backend canonicalization/rebuild evidence, Partner outlet cutover, end-to-end account/workflow validation, authorization/RLS verification, public-device verification, final deep legacy audit, live schema migration verification, and one isolated restore rehearsal.
 
 ## Release rule
 
