@@ -50,5 +50,5 @@
     const deco=root.querySelector('.av-theme-decoration');if(deco)deco.innerHTML=decorationSvg(t.decoration);
     return t;
   }
-  window.EOVoucherThemes={THEMES,normalize,get,options,resolve,applyToVoucher,decorationSvg};
+  window.CommercialVoucherThemes={THEMES,normalize,get,options,resolve,applyToVoucher,decorationSvg};
 })();
