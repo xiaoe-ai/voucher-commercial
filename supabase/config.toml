@@ -1,0 +1,61 @@
+project_id = "commercial-voucher-recovery-local"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:54321"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_signup = true
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+inspector_port = 8083
+
+[functions.create-partner]
+verify_jwt = true
+
+[functions.create-staff]
+verify_jwt = true
+
+[functions.reset-partner-password]
+verify_jwt = true
+
+[functions.manage-partner-staff]
+verify_jwt = true
+
+[functions.admin-set-partner-staff-limit]
+verify_jwt = true
+
+[functions.voucher-engine-admin]
+verify_jwt = true
+
+[functions.bootstrap-admin]
+verify_jwt = false
+
+[functions.voucher-engine]
+verify_jwt = true
+
+[functions.xiaoe-voucher-bridge]
+verify_jwt = false
