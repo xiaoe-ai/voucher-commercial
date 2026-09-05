@@ -58,7 +58,7 @@ jobs:
             cat "$MIGRATION_PATH"
             echo "select 'CATALOG_EXISTS=' || exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog');"
             echo "select 'NO_FIXED_TZ=' || not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog' and pg_get_functiondef(p.oid) ilike '%Asia/Kuala_Lumpur%');"
-            echo "select 'NO_RM_PREFIX=' || not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog' and pg_get_functiondef(p.oid) ~ $$'RM'\|\|'$$);"
+            echo "select 'NO_RM_PREFIX=' || not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog' and position(chr(39)||'RM'||chr(39)||'||' in pg_get_functiondef(p.oid)) > 0);"
             echo 'ROLLBACK;'
           } | psql -v ON_ERROR_STOP=1 -At | tee /tmp/phase2d.result
           grep -qx 'CATALOG_EXISTS=true' /tmp/phase2d.result
