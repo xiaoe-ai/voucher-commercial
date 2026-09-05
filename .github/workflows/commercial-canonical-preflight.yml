@@ -1,0 +1,63 @@
+name: Commercial Canonical Live Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/commercial-canonical-preflight-trigger'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-canonical-live-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: hukihbcyyqhanaqrizvm
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.hukihbcyyqhanaqrizvm
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PREFLIGHT_PATH: supabase/migrations/20260905095000_commercial_canonical_preflight.sql
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard exact Commercial route
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = 'hukihbcyyqhanaqrizvm'
+          test "$PGHOST" = 'aws-0-ap-southeast-1.pooler.supabase.com'
+          test "$PGPORT" = '5432'
+          test "$PGDATABASE" = 'postgres'
+          test "$PGUSER" = 'postgres.hukihbcyyqhanaqrizvm'
+          test -n "${PGPASSWORD:-}"
+          test -f "$PREFLIGHT_PATH"
+          echo 'Commercial route lock passed.'
+
+      - name: Verify live connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(psql -v ON_ERROR_STOP=1 -Atqc "select current_database() || '|' || current_user;")
+          echo "Connected as: $result"
+          test "$result" = 'postgres|postgres'
+
+      - name: Execute read-only preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          set transaction read only;
+          SQL
+          psql -v ON_ERROR_STOP=1 -f "$PREFLIGHT_PATH"
+          psql -v ON_ERROR_STOP=1 -c 'rollback;'
+          echo 'Commercial canonical preflight completed in read-only mode.'
