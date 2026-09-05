@@ -1,4 +1,4 @@
-const CACHE_NAME = 'xiaoe-app-shell-v1';
+const CACHE_NAME = 'commercial-voucher-app-shell-v2';
 
 const STATIC_ASSETS = [
   './offline.html',
@@ -11,60 +11,34 @@ const STATIC_ASSETS = [
   './staff-icon-180.png',
   './staff-icon-192.png',
   './staff-icon-512.png',
-  './welcome-glasses.jpg'
+  './commercial-brand.js',
+  './company-setup.html'
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS)));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
-  );
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
-
   const url = new URL(request.url);
-
-  // Never cache Supabase/API/auth traffic.
-  if (
-    url.hostname.includes('supabase.co') ||
-    url.pathname.includes('/auth/') ||
-    url.pathname.includes('/rest/') ||
-    url.pathname.includes('/rpc/')
-  ) {
-    return;
-  }
-
-  // HTML/navigation: network first, offline fallback.
+  if (url.hostname.includes('supabase.co') || url.pathname.includes('/auth/') || url.pathname.includes('/rest/') || url.pathname.includes('/rpc/')) return;
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(() => caches.match('./offline.html'))
-    );
+    event.respondWith(fetch(request).catch(() => caches.match('./offline.html')));
     return;
   }
-
-  // Same-origin static files: cache first, then network.
   if (url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(request).then(cached => {
-        if (cached) return cached;
-        return fetch(request).then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-          return response;
-        });
-      })
-    );
+    event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+      return response;
+    })));
   }
 });
