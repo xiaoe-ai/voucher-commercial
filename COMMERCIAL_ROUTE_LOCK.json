@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "project_key": "voucher_commercial",
   "status": "ACTIVE",
   "owner_orchestrator": "Xiao-E",
@@ -7,32 +7,49 @@
     "repository": "xiaoe-ai/voucher-commercial",
     "default_branch": "main"
   },
-  "supabase": {
+  "commercial_main_channel": {
+    "name": "Commercial Main Channel",
     "project_ref": "hukihbcyyqhanaqrizvm",
+    "default_mode": "runtime",
+    "modes": ["runtime", "migration"],
+    "selection_rule": "Use runtime for normal application/data operations. Use migration only for explicit schema/data migration work under supabase/migrations/.",
+    "cross_project_fallback": false
+  },
+  "runtime_mode": {
     "management_mode": "controlled_external_bridge",
     "bridge_target": "commercial",
     "remote_function": "xiaoe-voucher-bridge",
-    "allowed_actions": ["health", "read", "insert", "update", "upsert", "delete", "rpc"]
-  },
-  "xiaoe_runtime": {
-    "host_project_ref": "pgdnwjgfxpaszazuofns",
+    "allowed_actions": ["health", "read", "insert", "update", "upsert", "delete", "rpc"],
+    "xiaoe_host_project_ref": "pgdnwjgfxpaszazuofns",
     "invoke_gateway": "commercial-invoke-gateway",
     "bridge_function": "external-supabase-bridge",
     "gateway_url": "https://pgdnwjgfxpaszazuofns.supabase.co/functions/v1/commercial-invoke-gateway",
-    "auth_header": "X-XiaoE-Runtime-Key",
-    "store_runtime_key_here": false
+    "auth_header": "X-XiaoE-Runtime-Key"
+  },
+  "migration_mode": {
+    "management_mode": "manual_migration_channel",
+    "workflow": ".github/workflows/commercial-migration-channel.yml",
+    "transport": "Supabase Session Pooler / PostgreSQL / psql",
+    "migration_root": "supabase/migrations/",
+    "dry_run_required": true,
+    "explicit_apply_confirmation_required": true,
+    "apply_confirmation": "APPLY-COMMERCIAL-HUKIH",
+    "secret_reference": "SUPABASE_DB_PASSWORD",
+    "automatic_apply": false
   },
   "routing": {
     "hard_route_lock": true,
+    "project_ref_lock": "hukihbcyyqhanaqrizvm",
     "cross_project_fallback": false,
     "native_connector_account_switch_required": false,
     "deny_targets": ["production", "stage", "daughter", "xiaoe-core"],
-    "rule": "Commercial Voucher operations must enter through Xiao-E commercial-invoke-gateway, resolve to target=commercial and project_ref=hukihbcyyqhanaqrizvm, and never fall back to another Supabase project."
+    "rule": "All Commercial Voucher work resolves to one Commercial Main Channel locked to project_ref=hukihbcyyqhanaqrizvm. Runtime tasks use the Commercial runtime bridge. Explicit migration tasks use the Commercial manual migration workflow. The two modes share one logical Commercial route but retain separate credentials and safety controls."
   },
   "secrets": {
     "store_values_here": false,
-    "credential_reference": "XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN",
-    "runtime_key_reference": "X-XiaoE-Runtime-Key"
+    "runtime_credential_reference": "XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN",
+    "runtime_key_reference": "X-XiaoE-Runtime-Key",
+    "migration_credential_reference": "SUPABASE_DB_PASSWORD"
   },
   "verified_on": "2026-09-05"
 }
