@@ -31,10 +31,12 @@ jobs:
           }
           text = {k:p.read_text() for k,p in files.items()}
 
+          # Neutralize all fixed Malaysia locale literals in current runtime pages.
+          for k in text:
+            text[k] = text[k].replace('"en-MY"', 'navigator.language||"en-US"')
+
           a=text['admin.html']
           a=a.replace('name="eo-admin-build"','name="commercial-admin-build"')
-          a=a.replace('toLocaleString("en-MY",{maximumFractionDigits:2})','toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})')
-          a=a.replace('toLocaleString("en-MY")','toLocaleString(navigator.language||"en-US")')
           replacements={
             'Create Partner + RM60 initial limit + Staff limit + branch permission.':'Create Partner + initial voucher limit + Staff limit + branch permission.',
             'RM60 compatibility quota remains here. Other Voucher Types are managed in Voucher Engine.':'Compatibility quota remains here. Other Voucher Types are managed in Voucher Engine.',
@@ -51,18 +53,18 @@ jobs:
             '>+ Add RM60<':'>+ Add<',
           }
           for old,new in replacements.items(): a=a.replace(old,new)
+          a=a.replace('RM60','Legacy')
           a=a.replace('`RM${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `','`Value ${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `')
           a=a.replace('`RM${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`','`Value ${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`')
           a=a.replace('`evolution-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`','`commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`')
           text['admin.html']=a
 
-          for k in ('admin-core.html','staff.html'):
-            s=text[k]
-            s=s.replace('toLocaleString("en-MY",{maximumFractionDigits:2})','toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})')
-            s=s.replace('toLocaleString("en-MY")','toLocaleString(navigator.language||"en-US")')
-            s=s.replace('name="eo-admin-build"','name="commercial-admin-build"')
-            s=s.replace('name="eo-staff-build"','name="commercial-staff-build"')
-            text[k]=s
+          text['admin-core.html']=text['admin-core.html'].replace('name="eo-admin-build"','name="commercial-admin-build"')
+
+          s=text['staff.html']
+          s=s.replace('name="eo-staff-build"','name="commercial-staff-build"')
+          s=s.replace('placeholder="EO-20260808-XXXXXXX"','placeholder="V-20260808-XXXXXXXX"')
+          text['staff.html']=s
 
           v=text['voucher-engine.html']
           v=v.replace('name="eo-voucher-engine-build"','name="commercial-voucher-engine-build"')
@@ -76,12 +78,21 @@ jobs:
           forbidden={
             'admin.html':['eo-admin-build','en-MY','RM60','evolution-vouchers-','`RM${Number(ver.face_value)','`RM${Number(r.ver.face_value)'],
             'admin-core.html':['en-MY','eo-admin-build'],
-            'staff.html':['en-MY','eo-staff-build'],
+            'staff.html':['en-MY','eo-staff-build','EO-20260808-XXXXXXX'],
             'voucher-engine.html':['eo-voucher-engine-build','EOVoucherThemes','VOUCHER-RM100','RM100 Voucher','Face Value (RM)','Minimum Spend (RM)'],
           }
           for k,bad in forbidden.items():
             remain=[x for x in bad if x in text[k]]
             if remain: raise SystemExit(f'{k} cleanup incomplete: {remain}')
+
+          required={
+            'admin.html':['commercial-admin-build','commercial-vouchers-'],
+            'staff.html':['V-20260808-XXXXXXXX'],
+            'voucher-engine.html':['commercial-voucher-engine-build','CommercialVoucherThemes','Face Value','Minimum Spend'],
+          }
+          for k,need in required.items():
+            miss=[x for x in need if x not in text[k]]
+            if miss: raise SystemExit(f'{k} expected canonical fragments missing: {miss}')
 
           for k,p in files.items(): p.write_text(text[k])
           PY
@@ -91,14 +102,16 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          ! grep -q 'en-MY' admin.html admin-core.html staff.html
+          ! grep -q 'en-MY' admin.html admin-core.html staff.html voucher-engine.html
           ! grep -q 'EOVoucherThemes' voucher-engine.html
           ! grep -q 'eo-voucher-engine-build' voucher-engine.html
           ! grep -q 'evolution-vouchers-' admin.html
           ! grep -q 'RM60' admin.html
+          ! grep -q 'EO-20260808-XXXXXXX' staff.html
           grep -q 'commercial-admin-build' admin.html
           grep -q 'commercial-voucher-engine-build' voucher-engine.html
           grep -q 'CommercialVoucherThemes' voucher-engine.html
+          grep -q 'V-20260808-XXXXXXXX' staff.html
 
       - name: Commit runtime cleanup
         shell: bash
