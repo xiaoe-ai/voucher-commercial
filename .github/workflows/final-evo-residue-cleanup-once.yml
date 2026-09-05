@@ -1,0 +1,72 @@
+name: Final EVO residue cleanup once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/final-evo-residue-cleanup-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove final active EVO branding and special cases
+        shell: python
+        run: |
+          from pathlib import Path
+
+          # README: keep isolation rule but remove legacy brand name.
+          p=Path('README.txt')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('Commercial Voucher is a generic white-label voucher platform and must not depend on Evolution Optical branding or routes.',
+                      'Commercial Voucher is a generic white-label voucher platform and must not depend on any customer-specific branding or routes.')
+          p.write_text(s,encoding='utf-8')
+
+          # XiaoE brain login copy: generic Commercial admin wording.
+          p=Path('xiaoe-brain.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('Use your existing Evolution Optical Admin account.','Use your authorised Commercial Voucher Admin account.')
+          p.write_text(s,encoding='utf-8')
+
+          # Partner portal: remove obsolete EVO-FREE-GLASSES special-case branches.
+          p=Path('partner.html')
+          s=p.read_text(encoding='utf-8')
+
+          old='if(o.template_code==="EVO-FREE-GLASSES")return{key:"free_glasses_rm60",eyebrow:"FREE",titleHtml:"FREE GLASSES<br />VOUCHER",valueLabel:"VALUE",valueText:"RM60"};'
+          if old not in s:
+              raise SystemExit('Expected legacy voucher design branch not found')
+          s=s.replace(old,'',1)
+
+          old='if(o.template_code==="EVO-FREE-GLASSES")return partnerClaimAll?Object.keys(OUTLETS):partnerClaimCodes;'
+          if old not in s:
+              raise SystemExit('Expected legacy redemption branch not found')
+          s=s.replace(old,'',1)
+
+          old='if(o.template_code==="EVO-FREE-GLASSES"&&!o.validity_mode_v2){$("validityTitle").textContent="Validity: 3 calendar months from issue";$("validityText").textContent="RM60 Free Glasses Voucher keeps the original Commercial Voucher 3-calendar-month validity rule."}else '
+          if old not in s:
+              raise SystemExit('Expected legacy validity branch not found')
+          s=s.replace(old,'',1)
+
+          old='let data,error;if(o.template_code==="EVO-FREE-GLASSES")({data,error}=await db.rpc("create_partner_voucher_controlled",{p_customer_name:customerName,p_customer_phone:phone,p_customer_ic:"",p_voucher_type:"RM60 Free Glasses",p_expiry_date:null}));else({data,error}=await db.rpc("create_partner_multi_voucher_controlled",{p_version_id:o.version_id,p_customer_name:customerName,p_customer_phone:phone}));'
+          if old not in s:
+              raise SystemExit('Expected legacy creation branch not found')
+          s=s.replace(old,'let data,error;({data,error}=await db.rpc("create_partner_multi_voucher_controlled",{p_version_id:o.version_id,p_customer_name:customerName,p_customer_phone:phone}));',1)
+
+          p.write_text(s,encoding='utf-8')
+
+      - name: Verify active text no longer contains targeted EVO branding
+        shell: bash
+        run: |
+          ! grep -n -i 'Evolution Optical' README.txt xiaoe-brain.html partner.html
+          ! grep -n 'EVO-FREE-GLASSES' partner.html
+
+      - name: Commit cleanup
+        run: |
+          git config user.name 'xiaoe-white-label-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add README.txt xiaoe-brain.html partner.html
+          git commit -m 'refactor: remove final active EVO-specific voucher branches'
+          git push
