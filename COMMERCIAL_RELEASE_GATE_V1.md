@@ -17,7 +17,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Customer can set company name and basic company details without source-code edits.
 - [PASS] Company profile supports cloud sync with local continuity fallback.
 - [PASS] Admin / Partner / Staff install entry pages and launch splash screens are wired to Company Profile so role entry surfaces display the customer company name rather than a fixed Commercial/EVO brand.
-- [PENDING] Verify first-customer bootstrap path from blank Commercial database to active Admin account.
+- [PASS] First-customer Admin bootstrap was verified from the isolated canonical rebuild: bootstrap state starts disabled, a test setup code can enable first-admin creation, the first call creates an active Admin membership and consumes the setup code, and a second bootstrap attempt is rejected.
 - [PENDING] Verify logo and brand propagation across Admin / Partner / Staff / voucher presentation on actual runtime/device surfaces.
 
 ## C. Authentication and roles
@@ -47,7 +47,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Migration route uses manual GitHub workflow / Session Pooler.
 - [PASS] Live runtime health verification: Commercial health checks returned `ok=true`, HTTP 200 on four consecutive checks on 2026-09-05 after an earlier bridge-token configuration failure was corrected.
 - [PASS] Live source verification: XiaoE Supabase `commercial-invoke-gateway` v1 is ACTIVE and hard-locks `target=commercial` plus `project_ref=hukihbcyyqhanaqrizvm`; `external-supabase-bridge` v12 is ACTIVE and routes Commercial only to `https://hukihbcyyqhanaqrizvm.supabase.co/functions/v1/xiaoe-voucher-bridge` using the dedicated Commercial bridge token header.
-- [PENDING] Live runtime `read` verification after final schema freeze.
+- [PASS] Final live runtime `read` verification: XiaoE request id `33` returned HTTP 200 through the locked Commercial invoke path and successfully read `company_profile/default` using the canonical field `company_legal_name`.
 
 ## G. Migration and recovery
 - [PASS] Commercial migration channel is manual-only.
@@ -55,6 +55,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Apply requires explicit confirmation.
 - [PASS] SQL execution is transactional and Commercial-project locked.
 - [PASS] Backup and recovery procedure documented in `COMMERCIAL_BACKUP_RECOVERY_V1.md`, including backup scope, checkpoint triggers, isolated restore order, integrity checks and live-recovery safety rules.
+- [PASS] Canonical SQL rebuild completed successfully in an isolated PostgreSQL 17 container, with canonical files applied deterministically, required tables/RPCs present, RLS checks passing, and executable SQL passing Commercial-neutral legacy guards.
 - [PENDING] Run one restore / recovery rehearsal from documented backup into an isolated target.
 
 ## H. Public/PWA entry points
@@ -74,7 +75,9 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - Canonical live preflight run `33962616086`: missing tables 0, missing RPC 0, required RLS enabled, legacy/regional findings 0.
 - Frontend source neutralization removed legacy runtime identifiers, hardcoded outlet defaults, fixed Malaysia locale assumptions, old EO voucher placeholder/default copy and fixed RM60 display defaults from active runtime pages.
 - Release evidence run `33963887854` passed current-runtime legacy audit, defensive legacy guard isolation, canonical frontend identifier checks, public Pages route checks and PWA manifest validation.
-- XiaoE live Edge Function inventory rechecked on 2026-09-05: `commercial-invoke-gateway` ACTIVE v1 and `external-supabase-bridge` ACTIVE v12. Their live source confirms Commercial route-lock enforcement and the exact Commercial upstream project endpoint. This is source-level live verification only; it does not replace the pending authenticated runtime `read` or wrong-target invocation tests.
+- XiaoE live Edge Function inventory rechecked on 2026-09-05: `commercial-invoke-gateway` ACTIVE v1 and `external-supabase-bridge` ACTIVE v12. Their live source confirms Commercial route-lock enforcement and the exact Commercial upstream project endpoint.
+- Final runtime read request `33` returned HTTP 200 and read `company_profile/default` through `xiaoe -> commercial-invoke-gateway -> external-supabase-bridge -> Commercial xiaoe-voucher-bridge -> voucher-db`.
+- Isolated canonical rebuild run `33966478168` verified the expanded canonical baseline, including `admin_bootstrap_config` and `service_bootstrap_first_admin`; the first Admin bootstrap test passed, consumed its one-time setup state, and rejected a second bootstrap attempt.
 - `commercial-brand.js` retains only defensive legacy-detection/scrub behavior where old literals are needed to prevent legacy content from surfacing; it no longer exposes the old theme alias.
 - `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
@@ -82,7 +85,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher now has a neutralized live schema and neutralized current frontend runtime, plus verified public Pages routes. Remaining blockers are first-customer bootstrap verification, end-to-end Admin/Partner/Staff workflow and authorization tests, authenticated runtime wrong-target rejection, final live runtime read verification, actual-device PWA/install verification, and one isolated restore rehearsal.
+Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only runtime routing, a successful final runtime read, and a verified isolated canonical rebuild with one-time first Admin bootstrap behavior. Remaining blockers are end-to-end Admin/Partner/Staff login/workflow and authorization tests, authenticated runtime wrong-target rejection, actual-device branding/PWA verification, and one isolated restore rehearsal.
 
 Repository metadata note: the GitHub repository description still shows `evolution-optical-voucher`; the connected toolset does not expose repository-description write capability, so this remains a manual metadata cleanup item and does not represent active runtime code.
 
