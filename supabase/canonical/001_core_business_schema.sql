@@ -245,8 +245,5 @@ alter table public.vouchers enable row level security;
 alter table public.voucher_branches enable row level security;
 alter table public.redemptions enable row level security;
 
--- Intentionally omitted from the live schema during canonical neutralization:
--- * vouchers.voucher_type default 'RM59 Free Glasses'
--- * any EVO / Evolution Optical seed values
--- * any Malaysia / Kuala Lumpur business assumptions
--- * live RLS policies, RPCs, triggers and operational health/recovery objects (handled in later canonical layers)
+-- Customer-specific defaults, seed values and regional business assumptions are intentionally omitted.
+-- RLS policies, RPCs, triggers and operational health/recovery objects are handled in later canonical layers.
