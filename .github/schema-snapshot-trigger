@@ -1,3 +1,4 @@
-triggered_at=2026-09-05T16:32:00+08:00
+triggered_at=2026-09-05T16:47:00+08:00
 purpose=read-only live Commercial schema snapshot
 project_ref=hukihbcyyqhanaqrizvm
+client=postgresql-17
