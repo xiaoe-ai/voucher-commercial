@@ -1,5 +1,5 @@
 name: Commercial white-label residue audit once
-# final rerun: 2026-09-05
+# post-cleanup final audit: 2026-09-05
 
 on:
   push:
@@ -30,7 +30,9 @@ jobs:
           protected = {
               '.github/workflows/white-label-cleanup-once.yml',
               '.github/workflows/white-label-audit-once.yml',
+              '.github/workflows/final-evo-residue-cleanup-once.yml',
               'WHITE_LABEL_MIGRATION_V1.md',
+              'WHITE_LABEL_AUDIT_RESULT.md',
           }
           rows=[]
           for p in Path('.').rglob('*'):
