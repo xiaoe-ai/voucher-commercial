@@ -20,6 +20,24 @@
     ['FREE GLASSES', 'SPECIAL VOUCHER']
   ];
 
+  function installCommercialThemeApiAlias() {
+    if (window.CommercialVoucherThemes) return true;
+    if (window.EOVoucherThemes) {
+      window.CommercialVoucherThemes = window.EOVoucherThemes;
+      return true;
+    }
+    return false;
+  }
+
+  function watchCommercialThemeApi() {
+    if (installCommercialThemeApiAlias()) return;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (installCommercialThemeApiAlias() || attempts >= 80) clearInterval(timer);
+    }, 100);
+  }
+
   function fromRow(row = {}) {
     return {
       companyName: row.company_name || DEFAULTS.companyName,
@@ -99,6 +117,7 @@
     apply(next);
     installExportGuard(next);
     installLegacyVisibleGuard();
+    watchCommercialThemeApi();
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
 
     const db = getDb();
@@ -212,6 +231,7 @@
     apply(DEFAULTS);
     installExportGuard(DEFAULTS);
     installLegacyVisibleGuard();
+    watchCommercialThemeApi();
     const db = getDb();
     if (!db) return;
     try { await db.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
@@ -229,7 +249,8 @@
     reset,
     slugifyCompanyName,
     commercialExportFilename,
-    scrubLegacyVisibleText
+    scrubLegacyVisibleText,
+    installCommercialThemeApiAlias
   };
 
   const boot = async () => {
@@ -237,6 +258,7 @@
     apply(profile);
     installExportGuard(profile);
     installLegacyVisibleGuard();
+    watchCommercialThemeApi();
     await load();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
