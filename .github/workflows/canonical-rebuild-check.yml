@@ -106,11 +106,11 @@ jobs:
               'voucher_templates','voucher_versions','voucher_version_branches',
               'partner_voucher_access','partner_voucher_allocations',
               'voucher_allocation_branches','vouchers','voucher_branches',
-              'redemptions','admin_audit_log','voucher_allocation_events'
+              'redemptions','admin_audit_log','voucher_allocation_events','admin_bootstrap_config'
             )
           order by table_name;
           SQL
-          test "$(wc -l < /tmp/core_tables.txt)" -eq 15
+          test "$(wc -l < /tmp/core_tables.txt)" -eq 16
 
       - name: Verify required application RPCs
         shell: bash
@@ -135,11 +135,12 @@ jobs:
               'get_public_voucher','get_partner_voucher_share',
               'partner_recent_vouchers','partner_voucher_summary',
               'staff_operational_context','staff_recent_redemptions','staff_today_summary',
-              'admin_dashboard_summary','admin_redemption_report','admin_voucher_report'
+              'admin_dashboard_summary','admin_redemption_report','admin_voucher_report',
+              'service_bootstrap_first_admin'
             )
           order by p.proname;
           SQL
-          test "$(wc -l < /tmp/rpcs.txt)" -eq 28
+          test "$(wc -l < /tmp/rpcs.txt)" -eq 29
 
       - name: Verify RLS is enabled on core public tables
         shell: bash
@@ -156,11 +157,84 @@ jobs:
               'voucher_templates','voucher_versions','voucher_version_branches',
               'partner_voucher_access','partner_voucher_allocations',
               'voucher_allocation_branches','vouchers','voucher_branches',
-              'redemptions','admin_audit_log','voucher_allocation_events'
+              'redemptions','admin_audit_log','voucher_allocation_events','admin_bootstrap_config'
             )
             and not c.relrowsecurity;
           SQL
           test ! -s /tmp/rls_off.txt
+
+      - name: Verify first Admin bootstrap is one-time and consumptive
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          insert into auth.users(id,email)
+          values ('11111111-1111-4111-8111-111111111111','first-admin@example.invalid');
+
+          update public.admin_bootstrap_config
+          set setup_code_hash=encode(digest('TEST-FIRST-ADMIN-CODE','sha256'),'hex'),
+              enabled=true,
+              consumed_at=null,
+              updated_at=now()
+          where singleton=true;
+
+          do $$
+          declare
+            v_result jsonb;
+          begin
+            v_result := public.service_bootstrap_first_admin(
+              '11111111-1111-4111-8111-111111111111'::uuid,
+              'first-admin@example.invalid',
+              'TEST-FIRST-ADMIN-CODE'
+            );
+            if coalesce((v_result->>'success')::boolean,false) is not true then
+              raise exception 'First Admin bootstrap did not return success';
+            end if;
+          end
+          $$;
+
+          do $$
+          begin
+            if not exists (
+              select 1 from public.partner_users
+              where user_id='11111111-1111-4111-8111-111111111111'::uuid
+                and role='admin' and status='active' and removed_at is null
+            ) then
+              raise exception 'Active Admin membership was not created';
+            end if;
+
+            if exists (
+              select 1 from public.admin_bootstrap_config
+              where singleton=true and (enabled=true or consumed_at is null)
+            ) then
+              raise exception 'Bootstrap setup code was not consumed';
+            end if;
+          end
+          $$;
+
+          do $$
+          begin
+            begin
+              perform public.service_bootstrap_first_admin(
+                '11111111-1111-4111-8111-111111111111'::uuid,
+                'first-admin@example.invalid',
+                'TEST-FIRST-ADMIN-CODE'
+              );
+              raise exception 'Second bootstrap unexpectedly succeeded';
+            exception
+              when others then
+                if sqlerrm = 'Second bootstrap unexpectedly succeeded' then
+                  raise;
+                end if;
+                if position('First Admin setup is already complete' in sqlerrm) = 0 then
+                  raise exception 'Unexpected second-bootstrap error: %', sqlerrm;
+                end if;
+            end;
+          end
+          $$;
+
+          select 'FIRST_ADMIN_BOOTSTRAP_OK=true';
+          SQL
 
       - name: Verify Commercial-neutral executable SQL
         shell: bash
@@ -185,6 +259,7 @@ jobs:
           public_tables=$(psql -Atqc "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'")
           public_functions=$(psql -Atqc "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'")
           echo "CANONICAL_REBUILD_OK=true"
+          echo "FIRST_ADMIN_BOOTSTRAP_OK=true"
           echo "PostgreSQL=$pg_version"
           echo "Canonical_files=$canonical_files"
           echo "Public_tables=$public_tables"
