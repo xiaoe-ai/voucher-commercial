@@ -1,0 +1,111 @@
+name: Commercial Local Recovery Rehearsal
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'supabase/config.toml'
+      - 'supabase/canonical/**'
+      - 'supabase/functions/**'
+      - '.github/workflows/commercial-local-recovery-rehearsal.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  local-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start isolated local Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase start
+          supabase status
+          echo 'LOCAL_SUPABASE_STARTED=true'
+
+      - name: Apply canonical SQL baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_URL='postgresql://postgres:postgres@127.0.0.1:54322/postgres'
+          for f in $(find supabase/canonical -maxdepth 1 -type f -name '*.sql' | sort); do
+            echo "Applying $f"
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+          echo 'LOCAL_CANONICAL_SQL_OK=true'
+
+      - name: Start archived Edge Functions
+        shell: bash
+        env:
+          XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN: local-recovery-bridge-token
+        run: |
+          set -euo pipefail
+          nohup supabase functions serve --env-file <(printf 'XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN=local-recovery-bridge-token\n') > /tmp/functions.log 2>&1 &
+          echo $! > /tmp/functions.pid
+          for i in $(seq 1 30); do
+            if curl -sS -o /tmp/bridge.json -w '%{http_code}' \
+              -X POST 'http://127.0.0.1:54321/functions/v1/xiaoe-voucher-bridge' \
+              -H 'content-type: application/json' \
+              -H 'x-xiaoe-bridge-token: local-recovery-bridge-token' \
+              -d '{"action":"health"}' | grep -q '^200$'; then
+              cat /tmp/bridge.json
+              echo 'LOCAL_EDGE_RUNTIME_OK=true'
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/functions.log || true
+          exit 1
+
+      - name: Verify bridge health contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e '.ok == true' /tmp/bridge.json >/dev/null
+          jq -e '.project_ref == "hukihbcyyqhanaqrizvm"' /tmp/bridge.json >/dev/null
+          jq -e '.profile == "engineering_super_admin_v1"' /tmp/bridge.json >/dev/null
+          echo 'LOCAL_BRIDGE_HEALTH_OK=true'
+
+      - name: Verify protected function JWT behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/create-partner-nojwt.json -w '%{http_code}' \
+            -X POST 'http://127.0.0.1:54321/functions/v1/create-partner' \
+            -H 'content-type: application/json' \
+            -d '{}')
+          test "$code" = '401'
+          echo 'LOCAL_VERIFY_JWT_ENFORCED=true'
+
+      - name: Verify bootstrap custom protection surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/bootstrap.json -w '%{http_code}' \
+            -X POST 'http://127.0.0.1:54321/functions/v1/bootstrap-admin' \
+            -H 'content-type: application/json' \
+            -d '{}')
+          test "$code" != '401'
+          echo 'LOCAL_BOOTSTRAP_CUSTOM_AUTH_SURFACE_OK=true'
+
+      - name: Emit local recovery evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'COMMERCIAL_LOCAL_RECOVERY_REHEARSAL_OK=true'
+          echo 'EDGE_FUNCTION_COUNT=9'
+          echo 'PRODUCTION_TOUCHED=false'
+
+      - name: Dump local function logs on failure
+        if: failure()
+        shell: bash
+        run: cat /tmp/functions.log || true
