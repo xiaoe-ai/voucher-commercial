@@ -1,0 +1,13 @@
+{
+  "package": "XiaoE Portable Core",
+  "target": "Commercial Voucher",
+  "version": "2026-09-06",
+  "contains_secrets": false,
+  "contains_project_credentials": false,
+  "intended_path": "docs/xiaoe/XIAOE_PORTABLE_CORE.md",
+  "notes": [
+    "Project-local governance package only",
+    "Do not replace Commercial business logic with XiaoE Core infrastructure",
+    "Keep Commercial runtime and credentials isolated"
+  ]
+}
