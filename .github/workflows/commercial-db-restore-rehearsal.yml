@@ -113,19 +113,25 @@ jobs:
             ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','20000000-0000-4000-8000-000000000001','Recovery Staff','staff','active');
           SQL
 
-      - name: Create logical backup
+      - name: Create logical backup with PostgreSQL 17 client
         shell: bash
         run: |
           set -euo pipefail
-          pg_dump -d commercial_source --format=custom --no-owner --no-acl --file=/tmp/commercial-recovery.dump
+          cid=$(docker ps --filter ancestor=postgres:17 --format '{{.ID}}' | head -n1)
+          test -n "$cid"
+          docker exec "$cid" pg_dump -U postgres -d commercial_source --format=custom --no-owner --no-acl --file=/tmp/commercial-recovery.dump
+          docker cp "$cid:/tmp/commercial-recovery.dump" /tmp/commercial-recovery.dump
           test -s /tmp/commercial-recovery.dump
           sha256sum /tmp/commercial-recovery.dump | tee /tmp/commercial-recovery.sha256
 
-      - name: Restore into blank isolated recovery target
+      - name: Restore into blank isolated recovery target with PostgreSQL 17 client
         shell: bash
         run: |
           set -euo pipefail
-          pg_restore -d commercial_recovery --no-owner --no-acl --exit-on-error /tmp/commercial-recovery.dump
+          cid=$(docker ps --filter ancestor=postgres:17 --format '{{.ID}}' | head -n1)
+          test -n "$cid"
+          docker cp /tmp/commercial-recovery.dump "$cid:/tmp/commercial-recovery.dump"
+          docker exec "$cid" pg_restore -U postgres -d commercial_recovery --no-owner --no-acl --exit-on-error /tmp/commercial-recovery.dump
 
       - name: Verify restored schema functions RLS and business data
         shell: bash
