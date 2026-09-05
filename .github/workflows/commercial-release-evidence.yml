@@ -24,9 +24,8 @@ jobs:
 
           runtime_files = [
             'index.html','admin.html','admin-core.html','partner.html','staff.html',
-            'voucher-engine.html','company-setup.html','commercial-brand.js',
-            'voucher-theme-system-v1.js','manifest-admin.json','manifest-partner.json',
-            'manifest-staff.json','sw.js'
+            'voucher-engine.html','company-setup.html','voucher-theme-system-v1.js',
+            'manifest-admin.json','manifest-partner.json','manifest-staff.json','sw.js'
           ]
           patterns = {
             'Evolution Optical': re.compile(r'Evolution Optical', re.I),
@@ -41,8 +40,7 @@ jobs:
           findings=[]
           for rel in runtime_files:
             path=Path(rel)
-            if not path.exists():
-              continue
+            if not path.exists(): continue
             text=path.read_text(errors='ignore')
             for label,rx in patterns.items():
               if rx.search(text): findings.append((rel,label))
@@ -52,6 +50,16 @@ jobs:
             raise SystemExit(1)
           print('CURRENT_RUNTIME_LEGACY_AUDIT=PASS')
           PY
+
+      - name: Verify defensive legacy guard isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s commercial-brand.js
+          ! grep -q 'window.EOVoucherThemes' commercial-brand.js
+          ! grep -q 'const OUTLETS=' commercial-brand.js
+          grep -q 'CommercialVoucherThemes' commercial-brand.js || true
+          echo 'DEFENSIVE_LEGACY_GUARD=PASS'
 
       - name: Verify canonical source identifiers
         shell: bash
