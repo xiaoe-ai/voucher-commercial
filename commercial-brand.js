@@ -16,7 +16,8 @@
   const LEGACY_VISIBLE_REPLACEMENTS = [
     ['EO-20260808-XXXXXXX', 'Enter voucher code'],
     ['Evolution Optical', 'Commercial Voucher'],
-    ['EVOLUTION OPTICAL', 'COMMERCIAL VOUCHER']
+    ['EVOLUTION OPTICAL', 'COMMERCIAL VOUCHER'],
+    ['FREE GLASSES', 'SPECIAL VOUCHER']
   ];
 
   function fromRow(row = {}) {
@@ -178,16 +179,19 @@
     const name = profile.companyName || DEFAULTS.companyName;
     const legal = profile.companyLegalName || '';
     const tagline = profile.tagline || DEFAULTS.tagline;
+    const root = document.body || document.documentElement;
 
     document.documentElement.dataset.commercialCompany = name;
     document.querySelectorAll('[data-company-name]').forEach(el => { el.textContent = name; });
     document.querySelectorAll('[data-company-legal-name]').forEach(el => { el.textContent = legal || name; });
     document.querySelectorAll('[data-company-tagline]').forEach(el => { el.textContent = tagline; });
 
-    replaceText(document.body || document.documentElement, 'YOUR COMPANY', name.toUpperCase());
-    replaceText(document.body || document.documentElement, 'Your Company', name);
-    replaceText(document.body || document.documentElement, 'Commercial Voucher Admin', `${name} Admin`);
-    replaceText(document.body || document.documentElement, 'Commercial Voucher', `${name} Voucher`);
+    replaceText(root, 'YOUR COMPANY', name.toUpperCase());
+    replaceText(root, 'Your Company', name);
+    replaceText(root, 'Commercial Voucher Admin', `${name} Admin`);
+    replaceText(root, 'Commercial Voucher', `${name} Voucher`);
+    replaceText(root, 'FREE GLASSES', 'SPECIAL VOUCHER');
+    replaceText(root, 'Sdn Bhd', legal || tagline || name);
 
     if (document.title.includes('Your Company')) document.title = document.title.replaceAll('Your Company', name);
     if (document.title.includes('Commercial Voucher')) document.title = document.title.replace('Commercial Voucher', `${name} Voucher`);
