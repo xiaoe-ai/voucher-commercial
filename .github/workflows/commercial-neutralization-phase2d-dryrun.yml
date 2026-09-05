@@ -1,0 +1,74 @@
+name: Commercial Neutralization Phase 2D Dry Run
+
+on:
+  push:
+    paths:
+      - '.github/commercial-neutralization-phase2d-trigger'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-neutralization-phase2d-dryrun
+  cancel-in-progress: false
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: hukihbcyyqhanaqrizvm
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.hukihbcyyqhanaqrizvm
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      MIGRATION_PATH: supabase/migrations/20260905114500_commercial_neutralization_phase2d_partner_catalog.sql
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard exact Commercial route and migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = 'hukihbcyyqhanaqrizvm'
+          test "$PGHOST" = 'aws-0-ap-southeast-1.pooler.supabase.com'
+          test "$PGPORT" = '5432'
+          test "$PGDATABASE" = 'postgres'
+          test "$PGUSER" = 'postgres.hukihbcyyqhanaqrizvm'
+          test -n "${PGPASSWORD:-}"
+          test -f "$MIGRATION_PATH"
+          sha256sum "$MIGRATION_PATH"
+
+      - name: Verify live connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(psql -v ON_ERROR_STOP=1 -Atqc "select current_database() || '|' || current_user;")
+          echo "Connected as: $result"
+          test "$result" = 'postgres|postgres'
+
+      - name: Execute Phase 2D and rollback in one session
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'BEGIN;'
+            cat "$MIGRATION_PATH"
+            echo "select 'CATALOG_EXISTS=' || exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog');"
+            echo "select 'NO_FIXED_TZ=' || not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog' and pg_get_functiondef(p.oid) ilike '%Asia/Kuala_Lumpur%');"
+            echo "select 'NO_RM_PREFIX=' || not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog' and pg_get_functiondef(p.oid) ~ $$'RM'\|\|'$$);"
+            echo 'ROLLBACK;'
+          } | psql -v ON_ERROR_STOP=1 -At | tee /tmp/phase2d.result
+          grep -qx 'CATALOG_EXISTS=true' /tmp/phase2d.result
+          grep -qx 'NO_FIXED_TZ=true' /tmp/phase2d.result
+          grep -qx 'NO_RM_PREFIX=true' /tmp/phase2d.result
+
+      - name: Verify rollback preserved current live definition
+        shell: bash
+        run: |
+          set -euo pipefail
+          body=$(psql -v ON_ERROR_STOP=1 -Atqc "select pg_get_functiondef(p.oid) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='partner_issuable_voucher_catalog';")
+          test -n "$body"
+          grep -q 'Asia/Kuala_Lumpur' <<<"$body"
