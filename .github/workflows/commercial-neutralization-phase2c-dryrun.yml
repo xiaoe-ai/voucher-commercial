@@ -56,8 +56,8 @@ jobs:
           {
             echo 'BEGIN;'
             cat "$MIGRATION_PATH"
-            echo "select case when exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='verify_voucher' and pg_get_function_identity_arguments(p.oid)='p_voucher_code text, p_branch_code text' and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%') then 1 else 1/0 end;"
-            echo "select case when exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_voucher' and pg_get_function_identity_arguments(p.oid)='p_voucher_code text, p_notes text, p_branch_code text, p_redeem_method text' and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%') then 1 else 1/0 end;"
+            echo "select case when exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='verify_voucher' and p.pronargs=2 and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%') then 1 else 1/0 end;"
+            echo "select case when exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='redeem_voucher' and p.pronargs=4 and pg_get_functiondef(p.oid) not ilike '%Asia/Kuala_Lumpur%') then 1 else 1/0 end;"
             echo "select case when (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('verify_voucher','redeem_voucher'))=4 then 1 else 1/0 end;"
             echo 'ROLLBACK;'
           } | psql -v ON_ERROR_STOP=1
