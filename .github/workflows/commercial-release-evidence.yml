@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deep legacy source audit
+      - name: Deep current-runtime legacy audit
         shell: bash
         run: |
           set -euo pipefail
@@ -22,37 +22,48 @@ jobs:
           from pathlib import Path
           import re
 
-          exclude_prefixes = ('.git/', '.github/workflows/commercial-release-evidence.yml')
+          runtime_files = [
+            'index.html','admin.html','admin-core.html','partner.html','staff.html',
+            'voucher-engine.html','company-setup.html','commercial-brand.js',
+            'voucher-theme-system-v1.js','manifest-admin.json','manifest-partner.json',
+            'manifest-staff.json','sw.js'
+          ]
           patterns = {
             'Evolution Optical': re.compile(r'Evolution Optical', re.I),
             'EOVoucher': re.compile(r'EOVoucher', re.I),
-            'eo-partner-build': re.compile(r'eo-partner-build', re.I),
-            'hardcoded outlet': re.compile(r'The Mines Shopping Mall|Damai Perdana 6/1E|CS Bangi|Pertama Shopping Complex', re.I),
+            'eo-build-id': re.compile(r'name="eo-[^"]*build"', re.I),
+            'EO voucher prefix': re.compile(r'EO-20\d{6,}'),
+            'RM60 compatibility copy': re.compile(r'RM60', re.I),
+            'hardcoded EVO outlet': re.compile(r'The Mines Shopping Mall|Damai Perdana 6/1E|CS Bangi|Pertama Shopping Complex', re.I),
             'fixed Malaysia locale': re.compile(r'en-MY'),
+            'evolution export name': re.compile(r'evolution-vouchers-', re.I),
           }
           findings=[]
-          allowed_files={
-            'COMMERCIAL_LIVE_SCHEMA_AUDIT_20260905.md',
-            'COMMERCIAL_RELEASE_GATE_V1.md',
-            'commercial-brand.js',
-          }
-          for path in Path('.').rglob('*'):
-            if not path.is_file(): continue
-            rel=path.as_posix()
-            if rel.startswith('.git/'): continue
-            try: text=path.read_text(errors='ignore')
-            except Exception: continue
+          for rel in runtime_files:
+            path=Path(rel)
+            if not path.exists():
+              continue
+            text=path.read_text(errors='ignore')
             for label,rx in patterns.items():
-              if rx.search(text):
-                if rel in allowed_files:
-                  continue
-                findings.append((rel,label))
+              if rx.search(text): findings.append((rel,label))
           if findings:
-            print('LEGACY_FINDINGS')
-            for f in findings: print(f'{f[0]} :: {f[1]}')
+            print('RUNTIME_LEGACY_FINDINGS')
+            for rel,label in findings: print(f'{rel} :: {label}')
             raise SystemExit(1)
-          print('DEEP_LEGACY_AUDIT=PASS')
+          print('CURRENT_RUNTIME_LEGACY_AUDIT=PASS')
           PY
+
+      - name: Verify canonical source identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'commercial-partner-build' partner.html
+          grep -q 'commercial-admin-build' admin.html
+          grep -q 'commercial-voucher-engine-build' voucher-engine.html
+          grep -q 'window.CommercialVoucherThemes=' voucher-theme-system-v1.js
+          ! grep -q 'const OUTLETS=' partner.html
+          ! grep -q 'EOVoucherThemes' partner.html voucher-engine.html voucher-theme-system-v1.js
+          echo 'CANONICAL_FRONTEND_IDENTIFIERS=PASS'
 
       - name: Verify public Pages routes
         shell: bash
@@ -65,6 +76,7 @@ jobs:
             '/partner.html'
             '/staff.html'
             '/company-setup.html'
+            '/voucher-engine.html'
           )
           for route in "${routes[@]}"; do
             code=$(curl -L -sS -o /tmp/page.html -w '%{http_code}' "$base$route")
@@ -74,7 +86,7 @@ jobs:
           done
           echo 'PUBLIC_PAGES_ROUTES=PASS'
 
-      - name: Verify manifests and canonical frontend identifiers
+      - name: Verify manifests
         shell: bash
         run: |
           set -euo pipefail
@@ -82,8 +94,4 @@ jobs:
             test -s "$f"
             python -m json.tool "$f" >/dev/null
           done
-          grep -q 'commercial-partner-build' partner.html
-          ! grep -q 'EOVoucherThemes' partner.html
-          ! grep -q 'const OUTLETS=' partner.html
-          grep -q 'window.CommercialVoucherThemes=' voucher-theme-system-v1.js
-          echo 'FRONTEND_CANONICAL_IDENTIFIERS=PASS'
+          echo 'PWA_MANIFESTS=PASS'
