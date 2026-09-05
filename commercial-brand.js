@@ -13,6 +13,12 @@
     logoUrl: ''
   };
 
+  const LEGACY_VISIBLE_REPLACEMENTS = [
+    ['EO-20260808-XXXXXXX', 'Enter voucher code'],
+    ['Evolution Optical', 'Commercial Voucher'],
+    ['EVOLUTION OPTICAL', 'COMMERCIAL VOUCHER']
+  ];
+
   function fromRow(row = {}) {
     return {
       companyName: row.company_name || DEFAULTS.companyName,
@@ -91,6 +97,7 @@
     const next = saveLocal(profile);
     apply(next);
     installExportGuard(next);
+    installLegacyVisibleGuard();
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
 
     const db = getDb();
@@ -112,6 +119,23 @@
     nodes.forEach(node => {
       if (node.nodeValue && node.nodeValue.includes(from)) node.nodeValue = node.nodeValue.split(from).join(to);
     });
+  }
+
+  function scrubLegacyVisibleText() {
+    const root = document.body || document.documentElement;
+    LEGACY_VISIBLE_REPLACEMENTS.forEach(([from, to]) => replaceText(root, from, to));
+    document.querySelectorAll('input[placeholder], textarea[placeholder]').forEach(el => {
+      const p = el.getAttribute('placeholder') || '';
+      if (/^EO[-_]/i.test(p) || /evolution optical/i.test(p)) el.setAttribute('placeholder', 'Enter voucher code');
+    });
+  }
+
+  function installLegacyVisibleGuard() {
+    scrubLegacyVisibleText();
+    if (window.__commercialLegacyVisibleGuardInstalled) return;
+    window.__commercialLegacyVisibleGuardInstalled = true;
+    const observer = new MutationObserver(() => scrubLegacyVisibleText());
+    observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder'] });
   }
 
   function slugifyCompanyName(value) {
@@ -176,12 +200,14 @@
         img.hidden = true;
       }
     });
+    scrubLegacyVisibleText();
   }
 
   async function reset() {
     localStorage.removeItem(KEY);
     apply(DEFAULTS);
     installExportGuard(DEFAULTS);
+    installLegacyVisibleGuard();
     const db = getDb();
     if (!db) return;
     try { await db.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
@@ -198,13 +224,15 @@
     apply,
     reset,
     slugifyCompanyName,
-    commercialExportFilename
+    commercialExportFilename,
+    scrubLegacyVisibleText
   };
 
   const boot = async () => {
     const profile = loadLocal();
     apply(profile);
     installExportGuard(profile);
+    installLegacyVisibleGuard();
     await load();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
