@@ -20,8 +20,6 @@
     ['FREE GLASSES', 'SPECIAL VOUCHER']
   ];
 
-
-
   function fromRow(row = {}) {
     return {
       companyName: row.company_name || DEFAULTS.companyName,
@@ -101,6 +99,7 @@
     apply(next);
     installExportGuard(next);
     installLegacyVisibleGuard();
+    installPartnerCodeAutoUI();
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
 
     const dbClient = getDb();
@@ -139,6 +138,34 @@
     window.__commercialLegacyVisibleGuardInstalled = true;
     const observer = new MutationObserver(() => scrubLegacyVisibleText());
     observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder'] });
+  }
+
+  function installPartnerCodeAutoUI() {
+    const applyAuto = () => {
+      const input = document.getElementById('newPartnerCode');
+      if (!input) return false;
+      input.value = 'AUTO';
+      input.readOnly = true;
+      input.setAttribute('aria-readonly', 'true');
+      input.setAttribute('placeholder', 'System generates P001, P002, ...');
+      const field = input.closest('.field');
+      const label = field?.querySelector('label');
+      if (label) label.textContent = 'Partner Code (Auto-generated)';
+      if (field && !field.querySelector('[data-partner-code-auto-note]')) {
+        const note = document.createElement('div');
+        note.className = 'note';
+        note.dataset.partnerCodeAutoNote = 'true';
+        note.textContent = 'System assigns the next Partner code automatically: P001, P002, P003…';
+        field.appendChild(note);
+      }
+      return true;
+    };
+    if (applyAuto()) return;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (applyAuto() || attempts >= 40) clearInterval(timer);
+    }, 250);
   }
 
   function slugifyCompanyName(value) {
@@ -207,6 +234,7 @@
       }
     });
     scrubLegacyVisibleText();
+    installPartnerCodeAutoUI();
   }
 
   async function reset() {
@@ -214,6 +242,7 @@
     apply(DEFAULTS);
     installExportGuard(DEFAULTS);
     installLegacyVisibleGuard();
+    installPartnerCodeAutoUI();
     const dbClient = getDb();
     if (!dbClient) return;
     try { await dbClient.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
@@ -239,6 +268,7 @@
     apply(profile);
     installExportGuard(profile);
     installLegacyVisibleGuard();
+    installPartnerCodeAutoUI();
     await load();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
