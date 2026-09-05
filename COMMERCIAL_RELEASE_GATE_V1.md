@@ -56,7 +56,8 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] SQL execution is transactional and Commercial-project locked.
 - [PASS] Backup and recovery procedure documented in `COMMERCIAL_BACKUP_RECOVERY_V1.md`, including backup scope, checkpoint triggers, isolated restore order, integrity checks and live-recovery safety rules.
 - [PASS] Canonical SQL rebuild completed successfully in an isolated PostgreSQL 17 container, with canonical files applied deterministically, required tables/RPCs present, RLS checks passing, and executable SQL passing Commercial-neutral legacy guards.
-- [PENDING] Run one restore / recovery rehearsal from documented backup into an isolated target.
+- [PASS] Isolated database restore rehearsal completed successfully in workflow run `33966962154`: PostgreSQL 17 logical backup was created, restored into a blank isolated target, canonical grants were reapplied, schema/functions/RLS/business fixture integrity passed, restored Partner/Staff authorization isolation passed, and no legacy customer seed data was present.
+- [PENDING] Complete full application recovery rehearsal including canonical Edge Function source/deployment and post-recovery Admin -> Partner -> Staff -> issue -> verify -> redeem flow.
 
 ## H. Public/PWA entry points
 - [PASS] Admin portal exists.
@@ -80,6 +81,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - Runtime isolation requests `35` and `36` returned the expected HTTP 409 route-lock/project-lock rejections and did not reach a business-data write path.
 - Isolated canonical rebuild run `33966478168` verified the expanded canonical baseline, including `admin_bootstrap_config` and `service_bootstrap_first_admin`; the first Admin bootstrap test passed, consumed its one-time setup state, and rejected a second bootstrap attempt.
 - Isolated authorization workflow run `33966609022` passed Admin / Partner / Staff RLS isolation and cross-partner unauthorized update rejection.
+- Isolated database restore workflow run `33966962154` passed backup, blank-target restore, canonical grant reapplication, schema/functions/RLS/data integrity, post-restore authorization isolation and legacy-seed absence.
 - `commercial-brand.js` retains only defensive legacy-detection/scrub behavior where old literals are needed to prevent legacy content from surfacing; it no longer exposes the old theme alias.
 - `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
@@ -87,7 +89,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only runtime routing including negative rejection tests, a successful final runtime read, a verified isolated canonical rebuild with one-time first Admin bootstrap behavior, and a passing isolated Admin/Partner/Staff authorization matrix. Remaining blockers are live end-to-end role login/workflow verification, actual-device branding/PWA verification, and one isolated restore rehearsal.
+Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only runtime routing including negative rejection tests, a successful final runtime read, a verified isolated canonical rebuild with one-time first Admin bootstrap behavior, a passing isolated Admin/Partner/Staff authorization matrix, and a successful isolated database backup/restore rehearsal. Remaining blockers are live end-to-end role login/workflow verification, actual-device branding/PWA verification, and completion of full application recovery with canonical Edge Function source/deployment.
 
 Repository metadata note: the GitHub repository description still shows `evolution-optical-voucher`; the connected toolset does not expose repository-description write capability, so this remains a manual metadata cleanup item and does not represent active runtime code.
 
