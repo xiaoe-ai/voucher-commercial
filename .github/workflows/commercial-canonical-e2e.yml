@@ -158,10 +158,11 @@ jobs:
           set -euo pipefail
           CODE=$(cat /tmp/voucher_code)
           psql -v ON_ERROR_STOP=1 -v voucher_code="$CODE" <<'SQL'
+          select set_config('app.test_voucher_code', :'voucher_code', false);
           set role authenticated;
           select set_config('request.jwt.claim.sub','dddddddd-dddd-4ddd-8ddd-dddddddddddd',false);
           do $$
-          declare code text := :'voucher_code'; v jsonb; r jsonb; r2 jsonb;
+          declare code text := current_setting('app.test_voucher_code'); v jsonb; r jsonb; r2 jsonb;
           begin
             v := public.verify_voucher(code);
             if coalesce((v->>'success')::boolean,false) is not true then
