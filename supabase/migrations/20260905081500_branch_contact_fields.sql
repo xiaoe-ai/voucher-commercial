@@ -4,7 +4,7 @@ alter table if exists public.branches
   add column if not exists city text,
   add column if not exists state text,
   add column if not exists postcode text,
-  add column if not exists country text default 'Malaysia',
+  add column if not exists country text,
   add column if not exists phone text,
   add column if not exists whatsapp text,
   add column if not exists map_url text;
@@ -21,3 +21,4 @@ comment on column public.branches.map_url is 'Optional customer-configured map U
 
 -- This migration intentionally does not seed EVO / Evolution Optical branch data.
 -- Existing branch rows remain unchanged until the Commercial customer configures them.
+-- Country is intentionally not defaulted; Commercial Voucher must remain customer- and region-neutral.
