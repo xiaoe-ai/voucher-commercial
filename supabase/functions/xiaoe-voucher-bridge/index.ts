@@ -1,135 +1,122 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const PROJECT_REF = "hukihbcyyqhanaqrizvm";
-const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
-const reply = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+const BRIDGE_SECRET = "XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const BRIDGE_TOKEN = Deno.env.get(BRIDGE_SECRET) ?? "";
 
-const ACTIONS = new Set(["health", "read", "insert", "update", "upsert", "delete", "rpc"]);
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { "content-type": "application/json; charset=utf-8" },
+});
 
-function cleanLimit(raw: unknown) {
-  const n = Number(raw ?? 50);
-  if (!Number.isFinite(n)) return 50;
-  return Math.max(1, Math.min(Math.floor(n), 500));
+function auth(req: Request): boolean {
+  const supplied = req.headers.get("x-xiaoe-bridge-token") ?? "";
+  return !!BRIDGE_TOKEN && supplied === BRIDGE_TOKEN;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+const allowedOps = new Set(["eq","neq","gt","gte","lt","lte","like","ilike","is","in"]);
+
+function buildFilters(filters: Record<string, unknown> | undefined): string {
+  if (!filters || Object.keys(filters).length === 0) return "";
+  const sp = new URLSearchParams();
+  for (const [column, raw] of Object.entries(filters)) {
+    let op = "eq";
+    let value: unknown = raw;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const r = raw as Record<string, unknown>;
+      op = typeof r.op === "string" ? r.op : "eq";
+      value = r.value;
+    }
+    if (!allowedOps.has(op)) throw new Error(`unsupported filter operator: ${op}`);
+    if (op === "in") {
+      if (!Array.isArray(value)) throw new Error("in filter requires array value");
+      sp.set(column, `in.(${value.map(v => String(v)).join(",")})`);
+    } else {
+      sp.set(column, `${op}.${String(value)}`);
+    }
+  }
+  return sp.toString();
+}
+
+async function rest(path: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers ?? {});
+  headers.set("apikey", SERVICE_ROLE_KEY);
+  headers.set("authorization", `Bearer ${SERVICE_ROLE_KEY}`);
+  headers.set("content-type", "application/json");
+  headers.set("accept-profile", "public");
+  headers.set("content-profile", "public");
+  const res = await fetch(`${SUPABASE_URL}${path}`, { ...init, headers });
+  const text = await res.text();
+  let body: unknown = text;
+  try { body = text ? JSON.parse(text) : null; } catch { /* keep text */ }
+  return { status: res.status, ok: res.ok, body };
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method !== "POST") return reply(405, { ok: false, error: "method_not_allowed" });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (!auth(req)) return json({ ok: false, error: "unauthorized" }, 401);
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) return json({ ok: false, error: "bridge runtime not configured" }, 500);
 
-  const expectedToken =
-    Deno.env.get("VOUCHER_COMMERCIAL_BRIDGE_TOKEN")?.trim() ||
-    Deno.env.get("XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN")?.trim() ||
-    "";
-  const suppliedToken = req.headers.get("x-xiaoe-bridge-token")?.trim() || "";
-  if (!expectedToken || !suppliedToken || suppliedToken !== expectedToken) {
-    return reply(401, { ok: false, error: "unauthorized_bridge_caller" });
-  }
+  let input: Record<string, unknown> = {};
+  try { input = req.method === "GET" ? {} : await req.json(); } catch { return json({ ok: false, error: "invalid json" }, 400); }
 
-  const baseUrl = Deno.env.get("SUPABASE_URL") || "";
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  if (!baseUrl || !serviceRoleKey) return reply(500, { ok: false, error: "server_configuration_error" });
+  const action = String(input.action ?? (req.method === "GET" ? "health" : ""));
 
-  let body: Record<string, unknown>;
   try {
-    body = await req.json();
-  } catch {
-    return reply(400, { ok: false, error: "invalid_json" });
-  }
-
-  const requestedProject = String(body.project_ref ?? PROJECT_REF).trim();
-  const requestedTarget = String(body.target ?? "commercial").trim().toLowerCase();
-  if (requestedTarget !== "commercial") {
-    return reply(409, { ok: false, error: "commercial_route_lock_violation", requested_target: requestedTarget });
-  }
-  if (requestedProject !== PROJECT_REF) {
-    return reply(409, { ok: false, error: "commercial_project_lock_violation", requested_project_ref: requestedProject });
-  }
-
-  const action = String(body.action ?? "health").trim().toLowerCase();
-  if (!ACTIONS.has(action)) return reply(400, { ok: false, error: "unsupported_action", action });
-
-  const admin = createClient(baseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  if (action === "health") {
-    const { error } = await admin.from("partners").select("id", { count: "exact", head: true });
-    if (error) return reply(502, { ok: false, error: "voucher_db_unreachable", code: error.code });
-    return reply(200, {
-      ok: true,
-      bridge: "xiaoe-voucher-bridge",
-      project_ref: PROJECT_REF,
-      profile: "engineering_super_admin_v1",
-      actions: [...ACTIONS],
-    });
-  }
-
-  if (action === "rpc") {
-    const fn = typeof body.function === "string" ? body.function.trim() : "";
-    if (!fn) return reply(400, { ok: false, error: "function_required" });
-    const args = isRecord(body.args) ? body.args : {};
-    const { data, error } = await admin.rpc(fn, args);
-    if (error) return reply(400, { ok: false, action, result: { code: error.code, message: error.message, details: error.details, hint: error.hint } });
-    return reply(200, { ok: true, action, result: data });
-  }
-
-  const table = typeof body.table === "string" ? body.table.trim() : "";
-  if (!table || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) return reply(400, { ok: false, error: "valid_table_required" });
-
-  if (action === "read") {
-    const columns = typeof body.select === "string" && body.select.trim() ? body.select.trim() : "*";
-    let q = admin.from(table).select(columns).limit(cleanLimit(body.limit));
-    if (isRecord(body.eq)) {
-      for (const [key, value] of Object.entries(body.eq)) q = q.eq(key, value as never);
+    if (action === "health") {
+      return json({ ok: true, bridge: "xiaoe-voucher-bridge", project_ref: PROJECT_REF, profile: "engineering_super_admin_v1", actions: ["health","read","insert","update","upsert","delete","rpc"] });
     }
-    if (typeof body.order_by === "string" && body.order_by.trim()) {
-      q = q.order(body.order_by.trim(), { ascending: body.ascending !== false });
+
+    if (action === "rpc") {
+      const fn = String(input.function ?? "");
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fn)) return json({ ok: false, error: "invalid rpc function" }, 400);
+      const out = await rest(`/rest/v1/rpc/${encodeURIComponent(fn)}`, { method: "POST", body: JSON.stringify(input.params ?? {}) });
+      return json({ ok: out.ok, action, result: out.body }, out.status);
     }
-    const { data, error } = await q;
-    if (error) return reply(400, { ok: false, action, result: { code: error.code, message: error.message, details: error.details, hint: error.hint } });
-    return reply(200, { ok: true, action, result: data ?? [] });
-  }
 
-  if (action === "insert") {
-    const row = body.row;
-    if (!(isRecord(row) || Array.isArray(row))) return reply(400, { ok: false, error: "row_required" });
-    const { data, error } = await admin.from(table).insert(row as never).select();
-    if (error) return reply(400, { ok: false, action, result: { code: error.code, message: error.message, details: error.details, hint: error.hint } });
-    return reply(200, { ok: true, action, result: data ?? [] });
-  }
+    const table = String(input.table ?? "");
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) return json({ ok: false, error: "invalid table" }, 400);
+    const filters = (input.filters ?? undefined) as Record<string, unknown> | undefined;
+    const filterQuery = buildFilters(filters);
 
-  if (action === "upsert") {
-    const row = body.row;
-    if (!(isRecord(row) || Array.isArray(row))) return reply(400, { ok: false, error: "row_required" });
-    const onConflict = typeof body.on_conflict === "string" ? body.on_conflict.trim() : undefined;
-    const { data, error } = await admin.from(table).upsert(row as never, onConflict ? { onConflict } : undefined).select();
-    if (error) return reply(400, { ok: false, action, result: { code: error.code, message: error.message, details: error.details, hint: error.hint } });
-    return reply(200, { ok: true, action, result: data ?? [] });
-  }
+    if (action === "read") {
+      const select = typeof input.select === "string" ? input.select : "*";
+      const limit = Math.min(Math.max(Number(input.limit ?? 100), 1), 1000);
+      const qs = new URLSearchParams();
+      qs.set("select", select);
+      qs.set("limit", String(limit));
+      const fq = filterQuery ? `&${filterQuery}` : "";
+      const out = await rest(`/rest/v1/${encodeURIComponent(table)}?${qs.toString()}${fq}`, { method: "GET" });
+      return json({ ok: out.ok, action, result: out.body }, out.status);
+    }
 
-  if (action === "update") {
-    const patch = body.patch;
-    if (!isRecord(patch)) return reply(400, { ok: false, error: "patch_required" });
-    if (!isRecord(body.eq) || Object.keys(body.eq).length === 0) return reply(400, { ok: false, error: "update_filter_required" });
-    let q = admin.from(table).update(patch as never);
-    for (const [key, value] of Object.entries(body.eq)) q = q.eq(key, value as never);
-    const { data, error } = await q.select();
-    if (error) return reply(400, { ok: false, action, result: { code: error.code, message: error.message, details: error.details, hint: error.hint } });
-    return reply(200, { ok: true, action, result: data ?? [] });
-  }
+    if (action === "insert") {
+      const out = await rest(`/rest/v1/${encodeURIComponent(table)}`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(input.payload ?? {}) });
+      return json({ ok: out.ok, action, result: out.body }, out.status);
+    }
 
-  if (action === "delete") {
-    if (!isRecord(body.eq) || Object.keys(body.eq).length === 0) return reply(400, { ok: false, error: "delete_filter_required" });
-    let q = admin.from(table).delete();
-    for (const [key, value] of Object.entries(body.eq)) q = q.eq(key, value as never);
-    const { data, error } = await q.select();
-    if (error) return reply(400, { ok: false, action, result: { code: error.code, message: error.message, details: error.details, hint: error.hint } });
-    return reply(200, { ok: true, action, result: data ?? [] });
-  }
+    if (action === "upsert") {
+      const qs = typeof input.on_conflict === "string" && input.on_conflict ? `?on_conflict=${encodeURIComponent(input.on_conflict)}` : "";
+      const out = await rest(`/rest/v1/${encodeURIComponent(table)}${qs}`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify(input.payload ?? {}) });
+      return json({ ok: out.ok, action, result: out.body }, out.status);
+    }
 
-  return reply(400, { ok: false, error: "unsupported_action", action });
+    if (action === "update") {
+      if (!filterQuery) return json({ ok: false, error: "update requires filters" }, 400);
+      const out = await rest(`/rest/v1/${encodeURIComponent(table)}?${filterQuery}`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(input.payload ?? {}) });
+      return json({ ok: out.ok, action, result: out.body }, out.status);
+    }
+
+    if (action === "delete") {
+      if (!filterQuery) return json({ ok: false, error: "delete requires filters; full-table delete blocked" }, 400);
+      const out = await rest(`/rest/v1/${encodeURIComponent(table)}?${filterQuery}`, { method: "DELETE", headers: { Prefer: "return=representation" } });
+      return json({ ok: out.ok, action, result: out.body }, out.status);
+    }
+
+    return json({ ok: false, error: "unsupported action" }, 400);
+  } catch (e) {
+    return json({ ok: false, error: e instanceof Error ? e.message : String(e) }, 400);
+  }
 });
