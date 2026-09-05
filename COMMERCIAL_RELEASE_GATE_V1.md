@@ -22,10 +22,10 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 ## C. Authentication and roles
 - [PASS] Admin page contains Supabase Auth login and explicit Admin role check.
+- [PASS] Canonical authorization matrix verified in isolated PostgreSQL 17: Admin can read all partners; Partner Admin is restricted to its own partner/membership; Staff is restricted to its own branch; unauthorized cross-partner update is rejected by RLS.
 - [PENDING] End-to-end Admin login test on current Commercial Supabase.
-- [PENDING] End-to-end Partner login and authorization test.
-- [PENDING] End-to-end Staff login and branch-scope authorization test.
-- [PENDING] Confirm RLS / role policies reject cross-role and unauthorized direct writes.
+- [PENDING] End-to-end Partner login and authorization test on current Commercial Supabase.
+- [PENDING] End-to-end Staff login and branch-scope authorization test on current Commercial Supabase.
 
 ## D. Business workflow
 - [PENDING] Admin: create Partner -> allocate Voucher Type -> create Staff.
@@ -38,7 +38,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Commercial routing is locked to `hukihbcyyqhanaqrizvm`.
 - [PASS] Cross-project fallback is disabled in canonical Commercial route lock.
 - [PASS] EVO Production / Voucher Stage / Daughter are denied Commercial routing targets.
-- [PENDING] Runtime negative test: deliberately wrong project target must be rejected.
+- [PASS] Runtime wrong-target rejection verified: request `35` returned HTTP 409 `commercial_route_lock_violation` when target was not `commercial`; request `36` returned HTTP 409 `commercial_project_lock_violation` when `target=commercial` but project_ref was incorrect. Both requests were rejected before any Commercial DB write.
 
 ## F. XiaoE management channel
 - [PASS] Commercial Main Channel is the logical Commercial management route.
@@ -77,7 +77,9 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - Release evidence run `33963887854` passed current-runtime legacy audit, defensive legacy guard isolation, canonical frontend identifier checks, public Pages route checks and PWA manifest validation.
 - XiaoE live Edge Function inventory rechecked on 2026-09-05: `commercial-invoke-gateway` ACTIVE v1 and `external-supabase-bridge` ACTIVE v12. Their live source confirms Commercial route-lock enforcement and the exact Commercial upstream project endpoint.
 - Final runtime read request `33` returned HTTP 200 and read `company_profile/default` through `xiaoe -> commercial-invoke-gateway -> external-supabase-bridge -> Commercial xiaoe-voucher-bridge -> voucher-db`.
+- Runtime isolation requests `35` and `36` returned the expected HTTP 409 route-lock/project-lock rejections and did not reach a business-data write path.
 - Isolated canonical rebuild run `33966478168` verified the expanded canonical baseline, including `admin_bootstrap_config` and `service_bootstrap_first_admin`; the first Admin bootstrap test passed, consumed its one-time setup state, and rejected a second bootstrap attempt.
+- Isolated authorization workflow run `33966609022` passed Admin / Partner / Staff RLS isolation and cross-partner unauthorized update rejection.
 - `commercial-brand.js` retains only defensive legacy-detection/scrub behavior where old literals are needed to prevent legacy content from surfacing; it no longer exposes the old theme alias.
 - `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
@@ -85,7 +87,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only runtime routing, a successful final runtime read, and a verified isolated canonical rebuild with one-time first Admin bootstrap behavior. Remaining blockers are end-to-end Admin/Partner/Staff login/workflow and authorization tests, authenticated runtime wrong-target rejection, actual-device branding/PWA verification, and one isolated restore rehearsal.
+Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only runtime routing including negative rejection tests, a successful final runtime read, a verified isolated canonical rebuild with one-time first Admin bootstrap behavior, and a passing isolated Admin/Partner/Staff authorization matrix. Remaining blockers are live end-to-end role login/workflow verification, actual-device branding/PWA verification, and one isolated restore rehearsal.
 
 Repository metadata note: the GitHub repository description still shows `evolution-optical-voucher`; the connected toolset does not expose repository-description write capability, so this remains a manual metadata cleanup item and does not represent active runtime code.
 
