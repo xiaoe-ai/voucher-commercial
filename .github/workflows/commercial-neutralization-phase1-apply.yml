@@ -1,0 +1,80 @@
+name: Commercial Neutralization Phase 1 Apply
+
+on:
+  push:
+    paths:
+      - '.github/commercial-neutralization-phase1-apply-trigger'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-neutralization-phase1-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: hukihbcyyqhanaqrizvm
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.hukihbcyyqhanaqrizvm
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      MIGRATION_PATH: supabase/migrations/20260905101000_commercial_neutralization_phase1.sql
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard exact Commercial route and migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = 'hukihbcyyqhanaqrizvm'
+          test "$PGHOST" = 'aws-0-ap-southeast-1.pooler.supabase.com'
+          test "$PGPORT" = '5432'
+          test "$PGDATABASE" = 'postgres'
+          test "$PGUSER" = 'postgres.hukihbcyyqhanaqrizvm'
+          test -n "${PGPASSWORD:-}"
+          test "$MIGRATION_PATH" = 'supabase/migrations/20260905101000_commercial_neutralization_phase1.sql'
+          test -f "$MIGRATION_PATH"
+          sha256sum "$MIGRATION_PATH"
+          echo 'Commercial Phase 1 apply route lock passed.'
+
+      - name: Verify live connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(psql -v ON_ERROR_STOP=1 -Atqc "select current_database() || '|' || current_user;")
+          echo "Connected as: $result"
+          test "$result" = 'postgres|postgres'
+
+      - name: Apply Phase 1 transactionally
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'BEGIN;'
+            cat "$MIGRATION_PATH"
+            echo 'COMMIT;'
+          } | psql -v ON_ERROR_STOP=1
+          echo 'Commercial Phase 1 committed.'
+
+      - name: Verify live post-state
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_value=$(psql -v ON_ERROR_STOP=1 -Atqc "select coalesce(column_default,'') from information_schema.columns where table_schema='public' and table_name='vouchers' and column_name='voucher_type';")
+          echo "voucher_type default after apply: ${default_value:-<none>}"
+          test -z "$default_value"
+
+          auth_grant=$(psql -v ON_ERROR_STOP=1 -Atqc "select count(*) from information_schema.role_routine_grants where routine_schema='public' and routine_name='is_trusted_service_role' and grantee='authenticated' and privilege_type='EXECUTE';")
+          service_grant=$(psql -v ON_ERROR_STOP=1 -Atqc "select count(*) from information_schema.role_routine_grants where routine_schema='public' and routine_name='is_trusted_service_role' and grantee='service_role' and privilege_type='EXECUTE';")
+          echo "authenticated execute grants: $auth_grant"
+          echo "service_role execute grants: $service_grant"
+          test "$auth_grant" -eq 0
+          test "$service_grant" -ge 1
+
+          echo 'COMMERCIAL_NEUTRALIZATION_PHASE1_APPLIED=true'
