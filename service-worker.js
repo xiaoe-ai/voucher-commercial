@@ -1,4 +1,4 @@
-const CACHE_NAME = 'commercial-voucher-app-shell-v4';
+const CACHE_NAME = 'commercial-voucher-app-shell-v5';
 
 const STATIC_ASSETS = [
   './offline.html',
@@ -22,24 +22,68 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))));
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
+  );
   self.clients.claim();
 });
+
+function isRuntimeDataRequest(url) {
+  return url.hostname.includes('supabase.co') ||
+    url.pathname.includes('/auth/') ||
+    url.pathname.includes('/rest/') ||
+    url.pathname.includes('/rpc/');
+}
+
+function isCodeOrManifest(url) {
+  return url.origin === self.location.origin &&
+    (url.pathname.endsWith('.js') ||
+     url.pathname.endsWith('.html') ||
+     url.pathname.endsWith('.json') ||
+     url.pathname.endsWith('.css'));
+}
+
+async function networkFirst(request, fallback) {
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+    }
+    return response;
+  } catch (_) {
+    return (await caches.match(request)) || (fallback ? await caches.match(fallback) : Response.error());
+  }
+}
 
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
+
   const url = new URL(request.url);
-  if (url.hostname.includes('supabase.co') || url.pathname.includes('/auth/') || url.pathname.includes('/rest/') || url.pathname.includes('/rpc/')) return;
+  if (isRuntimeDataRequest(url)) return;
+
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('./offline.html')));
+    event.respondWith(networkFirst(request, './offline.html'));
     return;
   }
+
+  if (isCodeOrManifest(url)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   if (url.origin === self.location.origin) {
-    event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-      return response;
-    })));
+    event.respondWith(
+      caches.match(request).then(cached => cached || fetch(request).then(response => {
+        if (response && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+        }
+        return response;
+      }))
+    );
   }
 });
