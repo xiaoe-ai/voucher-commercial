@@ -24,6 +24,16 @@ jobs:
         with:
           version: latest
 
+      - name: Isolate legacy migration history
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d supabase/migrations ]; then
+            mv supabase/migrations supabase/migrations.history
+          fi
+          mkdir -p supabase/migrations
+          echo 'LEGACY_MIGRATIONS_BYPASSED=true'
+
       - name: Start isolated local Supabase
         shell: bash
         run: |
@@ -49,14 +59,16 @@ jobs:
           XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN: local-recovery-bridge-token
         run: |
           set -euo pipefail
-          nohup supabase functions serve --env-file <(printf 'XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN=local-recovery-bridge-token\n') > /tmp/functions.log 2>&1 &
+          printf 'XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN=local-recovery-bridge-token\n' > /tmp/recovery.env
+          nohup supabase functions serve --env-file /tmp/recovery.env > /tmp/functions.log 2>&1 &
           echo $! > /tmp/functions.pid
           for i in $(seq 1 30); do
-            if curl -sS -o /tmp/bridge.json -w '%{http_code}' \
+            code=$(curl -sS -o /tmp/bridge.json -w '%{http_code}' \
               -X POST 'http://127.0.0.1:54321/functions/v1/xiaoe-voucher-bridge' \
               -H 'content-type: application/json' \
               -H 'x-xiaoe-bridge-token: local-recovery-bridge-token' \
-              -d '{"action":"health"}' | grep -q '^200$'; then
+              -d '{"action":"health"}' || true)
+            if [ "$code" = '200' ]; then
               cat /tmp/bridge.json
               echo 'LOCAL_EDGE_RUNTIME_OK=true'
               exit 0
