@@ -1,0 +1,172 @@
+name: Commercial Canonical Rebuild Check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/canonical-rebuild-trigger'
+      - 'supabase/canonical/**'
+      - '.github/workflows/canonical-rebuild-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap minimal Supabase-compatible auth shim
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          begin
+            if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
+            if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+            if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
+          end
+          $$;
+
+          create schema if not exists auth;
+          create table if not exists auth.users (
+            id uuid primary key,
+            email text,
+            created_at timestamptz not null default now()
+          );
+
+          create or replace function auth.uid()
+          returns uuid
+          language sql
+          stable
+          as $$
+            select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid
+          $$;
+
+          grant usage on schema auth to anon, authenticated, service_role;
+          grant select on auth.users to service_role;
+          SQL
+
+      - name: Apply canonical SQL in deterministic order
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find supabase/canonical -maxdepth 1 -type f -name '*.sql' | sort)
+          test ${#files[@]} -gt 0
+          printf 'Canonical files to apply:\n'
+          printf ' - %s\n' "${files[@]}"
+          for f in "${files[@]}"; do
+            echo "=== APPLY $f ==="
+            psql -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Verify required core tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -At <<'SQL' > /tmp/core_tables.txt
+          select table_name
+          from information_schema.tables
+          where table_schema='public'
+            and table_name in (
+              'partners','branches','partner_users','staff_users',
+              'voucher_templates','voucher_versions','voucher_version_branches',
+              'partner_voucher_access','partner_voucher_allocations',
+              'voucher_allocation_branches','vouchers','voucher_branches',
+              'redemptions','admin_audit_log','voucher_allocation_events'
+            )
+          order by table_name;
+          SQL
+          test "$(wc -l < /tmp/core_tables.txt)" -eq 15
+
+      - name: Verify required application RPCs
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -At <<'SQL' > /tmp/rpcs.txt
+          select distinct p.proname
+          from pg_proc p
+          join pg_namespace n on n.oid=p.pronamespace
+          where n.nspname='public'
+            and p.proname in (
+              'is_admin','is_voucher_admin','is_partner_admin_for_partner',
+              'verify_voucher','redeem_voucher',
+              'get_my_partner_dashboard','get_my_partner_claim_access',
+              'partner_staff_capacity','partner_set_staff_access',
+              'create_partner_multi_voucher_controlled',
+              'admin_create_voucher_template_theme',
+              'admin_publish_voucher_version_theme',
+              'admin_get_partner_claim_access','admin_set_partner_claim_access',
+              'admin_engine_allocate','admin_engine_allocate_all',
+              'admin_engine_revoke_unissued','admin_engine_retire_version',
+              'get_public_voucher','get_partner_voucher_share',
+              'partner_recent_vouchers','partner_voucher_summary',
+              'staff_operational_context','staff_recent_redemptions','staff_today_summary',
+              'admin_dashboard_summary','admin_redemption_report','admin_voucher_report'
+            )
+          order by p.proname;
+          SQL
+          test "$(wc -l < /tmp/rpcs.txt)" -eq 28
+
+      - name: Verify RLS is enabled on core public tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -At <<'SQL' > /tmp/rls_off.txt
+          select c.relname
+          from pg_class c
+          join pg_namespace n on n.oid=c.relnamespace
+          where n.nspname='public'
+            and c.relkind='r'
+            and c.relname in (
+              'partners','branches','partner_users','staff_users',
+              'voucher_templates','voucher_versions','voucher_version_branches',
+              'partner_voucher_access','partner_voucher_allocations',
+              'voucher_allocation_branches','vouchers','voucher_branches',
+              'redemptions','admin_audit_log','voucher_allocation_events'
+            )
+            and not c.relrowsecurity;
+          SQL
+          test ! -s /tmp/rls_off.txt
+
+      - name: Verify Commercial-neutral canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RniE 'Evolution Optical|EVO-FREE-GLASSES|RM59 Free Glasses|RM60 Free Glasses|Asia/Kuala_Lumpur|\bEO-' supabase/canonical; then
+            echo 'Customer-specific or regional hardcoding found in canonical SQL.'
+            exit 1
+          fi
+
+      - name: Emit rebuild summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CANONICAL_REBUILD_OK=true"
+          echo "PostgreSQL=$(psql -Atqc 'show server_version')"
+          echo "Canonical_files=$(find supabase/canonical -maxdepth 1 -type f -name '*.sql' | wc -l)"
+          echo "Public_tables=$(psql -Atqc \"select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'\")"
+          echo "Public_functions=$(psql -Atqc \"select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public'\")"
