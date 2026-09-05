@@ -6,7 +6,7 @@ Canonical public GitHub Pages route: https://xiaoe-ai.github.io/voucher-commerci
 
 IMPORTANT:
 - voucher-commercial is the canonical source repository for Commercial Voucher.
-- Commercial Voucher is a generic white-label voucher platform and must not depend on Evolution Optical branding or routes.
+- Commercial Voucher is a generic white-label voucher platform and must not depend on any customer-specific branding or routes.
 - Commercial Voucher Supabase project ref: hukihbcyyqhanaqrizvm
 - Commercial Voucher must remain isolated from EVO Voucher Production and Voucher Stage routes/projects.
 - Customer branding is configured through the Company Profile layer.
