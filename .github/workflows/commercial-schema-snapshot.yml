@@ -6,8 +6,6 @@ on:
 permissions:
   contents: read
 
-actions:
-
 jobs:
   snapshot:
     runs-on: ubuntu-latest
@@ -92,19 +90,14 @@ jobs:
           " > snapshot/public-rls-policies.tsv
 
           psql -v ON_ERROR_STOP=1 -AtF $'\t' -c "
-            select table_schema,
-                   table_name,
-                   row_security
+            select t.table_schema,
+                   t.table_name,
+                   c.relrowsecurity
             from information_schema.tables t
-            left join lateral (
-              select c.relrowsecurity as row_security
-              from pg_class c
-              join pg_namespace n on n.oid = c.relnamespace
-              where n.nspname = t.table_schema and c.relname = t.table_name
-              limit 1
-            ) r on true
-            where table_schema = 'public' and table_type = 'BASE TABLE'
-            order by table_name;
+            join pg_namespace n on n.nspname = t.table_schema
+            join pg_class c on c.relnamespace = n.oid and c.relname = t.table_name
+            where t.table_schema = 'public' and t.table_type = 'BASE TABLE'
+            order by t.table_name;
           " > snapshot/public-table-rls.tsv
 
       - name: Write snapshot metadata
