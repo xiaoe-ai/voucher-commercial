@@ -27,7 +27,15 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PENDING] End-to-end Partner login and authorization test on current Commercial Supabase.
 - [PENDING] End-to-end Staff login and branch-scope authorization test on current Commercial Supabase.
 
-## D. Business workflow
+## D. Live security posture
+- [PASS] Supabase live Security Advisor reviewed on 2026-09-05 and recorded in `COMMERCIAL_LIVE_SECURITY_AUDIT_2026-09-05.md`.
+- [PASS] `touch_company_profile_updated_at()` was hardened with fixed `search_path='public'`; the mutable-search-path warning cleared on the follow-up advisor run.
+- [PASS] `voucher_allocation_branches` RLS/no-policy INFO was reviewed and classified as intentional internal-table isolation: live grants exist only for `postgres` and `service_role`, with no `anon` or `authenticated` table grants.
+- [PASS] `get_public_voucher(uuid)` anon `SECURITY DEFINER` warning was reviewed and classified as intentional public-token voucher presentation; its output excludes customer phone/IC, auth data, staff/admin records, allocation internals and credentials.
+- [PASS] Authenticated `SECURITY DEFINER` warnings were reviewed at function-body level: Admin RPCs enforce admin/voucher-admin checks; Partner RPCs enforce `auth.uid()` plus partner membership/role; Staff verify/redeem/reporting RPCs enforce active staff membership/branch scope; `issue_engine_voucher` delegates to the checked Partner issuance function.
+- [PENDING] Supabase Auth leaked-password protection is disabled. Enable it or explicitly accept the launch risk. Reference: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
+
+## E. Business workflow
 - [PENDING] Admin: create Partner -> allocate Voucher Type -> create Staff.
 - [PASS] Canonical recovery Partner issue -> Staff verify -> Staff redeem flow passed in isolated PostgreSQL 17 workflow run `33969904174`, including second-redemption rejection.
 - [PENDING] Live/current Commercial Partner: issue voucher -> generate customer voucher / QR.
@@ -35,13 +43,13 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PENDING] Voucher expiry and revoked/suspended behavior.
 - [PENDING] Reporting and Excel export end-to-end verification with customer-derived filename.
 
-## E. Isolation
+## F. Isolation
 - [PASS] Commercial routing is locked to `hukihbcyyqhanaqrizvm`.
 - [PASS] Cross-project fallback is disabled in canonical Commercial route lock.
 - [PASS] EVO Production / Voucher Stage / Daughter are denied Commercial routing targets.
 - [PASS] Runtime wrong-target rejection verified: request `35` returned HTTP 409 `commercial_route_lock_violation` when target was not `commercial`; request `36` returned HTTP 409 `commercial_project_lock_violation` when `target=commercial` but project_ref was incorrect. Both requests were rejected before any Commercial DB write.
 
-## F. XiaoE management channel
+## G. XiaoE management channel
 - [PASS] Commercial Main Channel is the logical Commercial management route.
 - [PASS] Runtime mode and migration mode remain credential-separated.
 - [PASS] Runtime route uses Commercial bridge target.
@@ -50,7 +58,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Live source verification: XiaoE Supabase `commercial-invoke-gateway` v1 is ACTIVE and hard-locks `target=commercial` plus `project_ref=hukihbcyyqhanaqrizvm`; `external-supabase-bridge` v12 is ACTIVE and routes Commercial only to `https://hukihbcyyqhanaqrizvm.supabase.co/functions/v1/xiaoe-voucher-bridge` using the dedicated Commercial bridge token header.
 - [PASS] Final live runtime `read` verification: XiaoE request id `33` returned HTTP 200 through the locked Commercial invoke path and successfully read `company_profile/default` using the canonical field `company_legal_name`.
 
-## G. Migration and recovery
+## H. Migration and recovery
 - [PASS] Commercial migration channel is manual-only.
 - [PASS] Dry-run is mandatory before apply.
 - [PASS] Apply requires explicit confirmation.
@@ -63,7 +71,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Isolated local Supabase recovery rehearsal run `33969555832` passed canonical-only stack startup, canonical SQL application, archived Edge Function startup, XiaoE bridge health, protected-function JWT enforcement, bootstrap custom-auth surface checks and emitted `PRODUCTION_TOUCHED=false`.
 - [PASS] Post-recovery canonical business E2E completed successfully in workflow run `33969904174`: Partner issuance passed, Staff verification passed, Staff redemption passed, a second redemption attempt was rejected, and `PRODUCTION_TOUCHED=false` was emitted. The two earlier runs (`33969706548`, `33969766121`) failed only in the test harness before full business execution; the corrected session-setting handoff resolved those harness defects without changing business logic.
 
-## H. Public/PWA entry points
+## I. Public/PWA entry points
 - [PASS] Admin portal exists.
 - [PASS] Partner portal exists.
 - [PASS] Staff portal exists.
@@ -90,6 +98,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - Edge source/build rehearsal run `33969245334` passed all source validation steps and recorded `LIVE_DEPLOYMENT_MUTATED=false`.
 - Local Supabase recovery rehearsal run `33969555832` passed the full canonical-only local stack and Edge Function smoke checks with `PRODUCTION_TOUCHED=false`.
 - Canonical business E2E run `33969904174` passed the complete isolated flow `partner_issue -> staff_verify -> staff_redeem`, including double-redemption protection, after the harness-only defects in runs `33969706548` and `33969766121` were corrected.
+- Live security advisor audit is recorded in `COMMERCIAL_LIVE_SECURITY_AUDIT_2026-09-05.md`; trigger search-path hardening was applied live and the warning cleared on recheck.
 - `commercial-brand.js` retains only defensive legacy-detection/scrub behavior where old literals are needed to prevent legacy content from surfacing; it no longer exposes the old theme alias.
 - `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
@@ -97,7 +106,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only routing, a successful runtime read, a verified isolated canonical rebuild and authorization matrix, a successful isolated database backup/restore rehearsal, a complete archived/type-checked Edge Function source set, a successful canonical-only local Supabase recovery rehearsal with Edge Function startup and security checks, and a successful isolated Partner issue -> Staff verify -> Staff redeem business E2E. Remaining blockers are live/current Commercial role/workflow verification, actual-device branding/PWA verification, expiry/revocation verification, and reporting/Excel end-to-end verification.
+Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only routing, a successful runtime read, a verified isolated canonical rebuild and authorization matrix, a successful isolated database backup/restore rehearsal, a complete archived/type-checked Edge Function source set, a successful canonical-only local Supabase recovery rehearsal with Edge Function startup and security checks, a successful isolated Partner issue -> Staff verify -> Staff redeem business E2E, and a completed live Supabase security-advisor review with the mutable-search-path warning remediated. Remaining blockers are real live/current Commercial role/workflow verification, actual-device branding/PWA verification, expiry/revocation verification, reporting/Excel end-to-end verification, and leaked-password-protection handling.
 
 Repository metadata note: the GitHub repository description still shows `evolution-optical-voucher`; the connected toolset does not expose repository-description write capability, so this remains a manual metadata cleanup item and does not represent active runtime code.
 
