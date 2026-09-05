@@ -179,7 +179,7 @@
       window.XLSX.writeFile = (workbook, filename, ...rest) => {
         let nextName = String(filename || '');
         if (!nextName || /evolution[-_ ]?vouchers/i.test(nextName) || /^commercial[-_ ]?vouchers/i.test(nextName)) {
-          nextName = commercialExportFilename(new Date(), profile);
+          nextName = commercialExportFilename(new Date(), loadLocal());
         }
         return original(workbook, nextName, ...rest);
       };
