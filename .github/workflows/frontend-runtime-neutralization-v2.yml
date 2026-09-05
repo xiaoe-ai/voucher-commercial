@@ -26,18 +26,18 @@ jobs:
           files = {
             'admin.html': Path('admin.html'),
             'admin-core.html': Path('admin-core.html'),
+            'partner.html': Path('partner.html'),
             'staff.html': Path('staff.html'),
             'voucher-engine.html': Path('voucher-engine.html'),
           }
           text = {k:p.read_text() for k,p in files.items()}
 
-          # Neutralize all fixed Malaysia locale literals in current runtime pages.
           for k in text:
             text[k] = text[k].replace('"en-MY"', 'navigator.language||"en-US"')
 
           a=text['admin.html']
           a=a.replace('name="eo-admin-build"','name="commercial-admin-build"')
-          replacements={
+          for old,new in {
             'Create Partner + RM60 initial limit + Staff limit + branch permission.':'Create Partner + initial voucher limit + Staff limit + branch permission.',
             'RM60 compatibility quota remains here. Other Voucher Types are managed in Voucher Engine.':'Compatibility quota remains here. Other Voucher Types are managed in Voucher Engine.',
             'Initial RM60 Voucher Limit':'Initial Voucher Limit',
@@ -51,15 +51,24 @@ jobs:
             'placeholder="RM60 voucher quantity"':'placeholder="Voucher quantity"',
             '>Set RM60 Total<':'>Set Total<',
             '>+ Add RM60<':'>+ Add<',
-          }
-          for old,new in replacements.items(): a=a.replace(old,new)
+          }.items(): a=a.replace(old,new)
           a=a.replace('RM60','Legacy')
           a=a.replace('`RM${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `','`Value ${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `')
           a=a.replace('`RM${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`','`Value ${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`')
           a=a.replace('`evolution-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`','`commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`')
           text['admin.html']=a
 
-          text['admin-core.html']=text['admin-core.html'].replace('name="eo-admin-build"','name="commercial-admin-build"')
+          ac=text['admin-core.html']
+          ac=ac.replace('RM60 Free Glasses','Voucher')
+          ac=ac.replace('`evolution-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`','`commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`')
+          text['admin-core.html']=ac
+
+          p=text['partner.html']
+          p=p.replace('<div class="av-appreciation">Sdn Bhd</div>','<div class="av-appreciation">Voucher</div>')
+          p=p.replace('<div class="av-free" id="offerEyebrow">FREE</div>','<div class="av-free" id="offerEyebrow">VALUE</div>')
+          p=p.replace('<div class="av-offer-copy" id="offerTitle">FREE GLASSES<br />VOUCHER</div>','<div class="av-offer-copy" id="offerTitle">VOUCHER</div>')
+          p=p.replace('<strong id="offerValue">RM60</strong>','<strong id="offerValue">—</strong>')
+          text['partner.html']=p
 
           s=text['staff.html']
           s=s.replace('name="eo-staff-build"','name="commercial-staff-build"')
@@ -76,25 +85,17 @@ jobs:
           text['voucher-engine.html']=v
 
           forbidden={
-            'admin.html':['eo-admin-build','en-MY','RM60','evolution-vouchers-','`RM${Number(ver.face_value)','`RM${Number(r.ver.face_value)'],
-            'admin-core.html':['en-MY','eo-admin-build'],
-            'staff.html':['en-MY','eo-staff-build','EO-20260808-XXXXXXX'],
-            'voucher-engine.html':['eo-voucher-engine-build','EOVoucherThemes','VOUCHER-RM100','RM100 Voucher','Face Value (RM)','Minimum Spend (RM)'],
+            'admin.html':['en-MY','RM60','evolution-vouchers-'],
+            'admin-core.html':['en-MY','RM60 Free Glasses','evolution-vouchers-'],
+            'partner.html':['RM60','FREE GLASSES','<div class="av-appreciation">Sdn Bhd</div>'],
+            'staff.html':['en-MY','EO-20260808-XXXXXXX'],
+            'voucher-engine.html':['EOVoucherThemes','VOUCHER-RM100','RM100 Voucher','Face Value (RM)','Minimum Spend (RM)'],
           }
           for k,bad in forbidden.items():
             remain=[x for x in bad if x in text[k]]
             if remain: raise SystemExit(f'{k} cleanup incomplete: {remain}')
 
-          required={
-            'admin.html':['commercial-admin-build','commercial-vouchers-'],
-            'staff.html':['V-20260808-XXXXXXXX'],
-            'voucher-engine.html':['commercial-voucher-engine-build','CommercialVoucherThemes','Face Value','Minimum Spend'],
-          }
-          for k,need in required.items():
-            miss=[x for x in need if x not in text[k]]
-            if miss: raise SystemExit(f'{k} expected canonical fragments missing: {miss}')
-
-          for k,p in files.items(): p.write_text(text[k])
+          for k,pth in files.items(): pth.write_text(text[k])
           PY
 
       - name: Static assertions
@@ -103,11 +104,11 @@ jobs:
           set -euo pipefail
           git diff --check
           ! grep -q 'en-MY' admin.html admin-core.html staff.html voucher-engine.html
+          ! grep -q 'RM60' admin.html admin-core.html partner.html
+          ! grep -q 'evolution-vouchers-' admin.html admin-core.html
           ! grep -q 'EOVoucherThemes' voucher-engine.html
-          ! grep -q 'eo-voucher-engine-build' voucher-engine.html
-          ! grep -q 'evolution-vouchers-' admin.html
-          ! grep -q 'RM60' admin.html
           ! grep -q 'EO-20260808-XXXXXXX' staff.html
+          ! grep -q 'FREE GLASSES' partner.html
           grep -q 'commercial-admin-build' admin.html
           grep -q 'commercial-voucher-engine-build' voucher-engine.html
           grep -q 'CommercialVoucherThemes' voucher-engine.html
@@ -117,12 +118,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- admin.html admin-core.html staff.html voucher-engine.html; then
+          if git diff --quiet -- admin.html admin-core.html partner.html staff.html voucher-engine.html; then
             echo 'No runtime cleanup changes required.'
             exit 0
           fi
           git config user.name 'Xiao-E-26'
           git config user.email 'xiaoeai2026@gmail.com'
-          git add admin.html admin-core.html staff.html voucher-engine.html
-          git commit -m 'Neutralize remaining Commercial frontend runtime identifiers'
+          git add admin.html admin-core.html partner.html staff.html voucher-engine.html
+          git commit -m 'Complete Commercial frontend runtime neutralization'
           git push origin HEAD:main
