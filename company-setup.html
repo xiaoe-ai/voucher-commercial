@@ -6,14 +6,15 @@
   <meta name="theme-color" content="#08122f" />
   <title>Company Setup • Commercial Voucher</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(160deg,#050716,#08102b 52%,#040816);color:#f7f8ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{width:min(720px,calc(100% - 24px));margin:auto;padding:28px 0 60px}.card{padding:22px;border:1px solid rgba(115,135,210,.38);border-radius:24px;background:linear-gradient(155deg,rgba(25,23,78,.98),rgba(9,25,61,.99));box-shadow:0 18px 40px rgba(0,0,0,.28)}h1{margin:0 0 8px;font-size:30px}p{color:#bcc7e3;line-height:1.5}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.wide{grid-column:1/-1}.field{margin-top:10px}label{display:block;margin-bottom:6px;font-size:12px;font-weight:800;color:#d9e3ff}input{width:100%;min-height:49px;padding:12px 13px;border:1px solid rgba(100,128,210,.55);border-radius:14px;background:#0b1535;color:#fff;font:inherit}button{width:100%;min-height:52px;margin-top:18px;border:0;border-radius:14px;color:#fff;font-weight:900;background:linear-gradient(135deg,#a858ff,#6d6fff 52%,#31d9e8)}.msg{margin-top:12px;padding:11px;border-radius:12px;background:rgba(32,215,160,.12);color:#69efb7}.links{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.links a{padding:11px 8px;border-radius:12px;text-align:center;text-decoration:none;color:#fff;background:#111b44}.note{font-size:12px}@media(max-width:600px){.grid,.links{grid-template-columns:1fr}.wide{grid-column:auto}}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(160deg,#050716,#08102b 52%,#040816);color:#f7f8ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{width:min(720px,calc(100% - 24px));margin:auto;padding:28px 0 60px}.card{padding:22px;border:1px solid rgba(115,135,210,.38);border-radius:24px;background:linear-gradient(155deg,rgba(25,23,78,.98),rgba(9,25,61,.99));box-shadow:0 18px 40px rgba(0,0,0,.28)}h1{margin:0 0 8px;font-size:30px}p{color:#bcc7e3;line-height:1.5}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.wide{grid-column:1/-1}.field{margin-top:10px}label{display:block;margin-bottom:6px;font-size:12px;font-weight:800;color:#d9e3ff}input{width:100%;min-height:49px;padding:12px 13px;border:1px solid rgba(100,128,210,.55);border-radius:14px;background:#0b1535;color:#fff;font:inherit}button{width:100%;min-height:52px;margin-top:18px;border:0;border-radius:14px;color:#fff;font-weight:900;background:linear-gradient(135deg,#a858ff,#6d6fff 52%,#31d9e8)}button:disabled{opacity:.55}.msg{margin-top:12px;padding:11px;border-radius:12px;background:rgba(32,215,160,.12);color:#69efb7}.msg.warn{background:rgba(255,177,76,.12);color:#ffd08a}.msg.err{background:rgba(255,95,122,.12);color:#ff92a5}.links{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}.links a{padding:11px 8px;border-radius:12px;text-align:center;text-decoration:none;color:#fff;background:#111b44}.note{font-size:12px}@media(max-width:600px){.grid,.links{grid-template-columns:1fr}.wide{grid-column:auto}}
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
   <main class="wrap">
     <section class="card">
       <h1>Company Setup</h1>
-      <p>Enter your company details once. Commercial Voucher will use this profile as the customer-facing brand on this device.</p>
+      <p>Enter your company details once. Commercial Voucher will use the cloud Company Profile across devices when Supabase sync is available, with local fallback if the backend is temporarily unavailable.</p>
       <div class="grid">
         <div class="field wide"><label>Company Name *</label><input id="companyName" placeholder="e.g. ABC Retail Sdn Bhd" /></div>
         <div class="field"><label>Legal / Registered Name</label><input id="companyLegalName" /></div>
@@ -26,18 +27,47 @@
       <button id="saveBtn">SAVE COMPANY PROFILE</button>
       <div id="msg"></div>
       <div class="links"><a href="admin.html">Admin</a><a href="partner.html">Partner</a><a href="staff.html">Staff</a></div>
-      <p class="note">This is the first white-label profile layer. Server-side profile sync will be enabled when the Commercial Voucher Supabase management connection is writable.</p>
+      <p class="note">Cloud writes require an authorised Commercial Voucher Admin session. If cloud sync is unavailable, the profile is still saved locally on this device.</p>
     </section>
   </main>
   <script src="commercial-brand.js"></script>
   <script>
-    const api=window.CommercialCompanyProfile,p=api.load();
-    for(const k of Object.keys(api.DEFAULTS)){const el=document.getElementById(k);if(el)el.value=p[k]||''}
-    document.getElementById('saveBtn').onclick=()=>{
-      const profile={};for(const k of Object.keys(api.DEFAULTS)){const el=document.getElementById(k);if(el)profile[k]=el.value.trim()}
-      if(!profile.companyName){document.getElementById('msg').innerHTML='<div class="msg" style="color:#ff92a5">Company Name is required.</div>';return}
-      api.save(profile);document.getElementById('msg').innerHTML='<div class="msg">Company profile saved successfully.</div>';
+    const api=window.CommercialCompanyProfile;
+    const msg=document.getElementById('msg');
+    const saveBtn=document.getElementById('saveBtn');
+
+    async function hydrate(){
+      const p=await api.load();
+      for(const k of Object.keys(api.DEFAULTS)){
+        const el=document.getElementById(k);
+        if(el)el.value=p[k]||'';
+      }
+    }
+
+    saveBtn.onclick=async()=>{
+      const profile={};
+      for(const k of Object.keys(api.DEFAULTS)){
+        const el=document.getElementById(k);
+        if(el)profile[k]=el.value.trim();
+      }
+      if(!profile.companyName){
+        msg.innerHTML='<div class="msg err">Company Name is required.</div>';
+        return;
+      }
+
+      saveBtn.disabled=true;
+      msg.innerHTML='<div class="msg">Saving company profile…</div>';
+      const result=await api.save(profile);
+      saveBtn.disabled=false;
+
+      if(result.synced){
+        msg.innerHTML='<div class="msg">Company profile saved and synced to Commercial Supabase.</div>';
+      }else{
+        msg.innerHTML='<div class="msg warn">Company profile saved on this device. Cloud sync is not available yet for this session.</div>';
+      }
     };
+
+    hydrate();
   </script>
 </body>
 </html>
