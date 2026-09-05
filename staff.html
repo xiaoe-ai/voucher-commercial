@@ -55,7 +55,7 @@
     </section>
     <section class="card">
       <h3>Verify Voucher</h3><p class="sub">Enter a voucher code or scan a QR code before redemption.</p>
-      <div class="row"><input id="voucherCode" class="grow" placeholder="EO-20260808-XXXXXXX" autocomplete="off"><button id="verifyBtn" class="btn blue">VERIFY</button><button id="scanBtn" class="btn ghost">SCAN QR</button></div>
+      <div class="row"><input id="voucherCode" class="grow" placeholder="V-20260808-XXXXXXXX" autocomplete="off"><button id="verifyBtn" class="btn blue">VERIFY</button><button id="scanBtn" class="btn ghost">SCAN QR</button></div>
       <div id="verifyMsg"></div>
       <div id="scannerBox" class="hidden"><div id="qrReader"></div><div class="row" style="margin-top:10px"><button id="stopScanBtn" class="btn red">STOP CAMERA</button></div></div>
       <div id="voucherCard" class="voucher hidden">
@@ -192,7 +192,7 @@ async function redeemVoucher(){if(!currentVoucher?.can_redeem)return;if(!confirm
 function fmtDateTime(x){
   if(!x) return "—";
   const d=new Date(x);
-  return isNaN(d) ? String(x) : d.toLocaleString("en-MY",{
+  return isNaN(d) ? String(x) : d.toLocaleString(navigator.language||"en-US",{
     year:"numeric",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"
   });
 }
