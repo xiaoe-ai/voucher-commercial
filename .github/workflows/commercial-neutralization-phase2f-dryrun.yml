@@ -56,39 +56,12 @@ jobs:
           {
             echo 'BEGIN;'
             cat "$MIGRATION_PATH"
-            cat <<'SQL'
-select 'FUNCTION_COUNT=' || count(*)
-from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-where n.nspname='public'
-  and p.proname in ('create_partner_voucher','create_partner_voucher_controlled','sync_single_voucher_partner_engine');
-
-select 'LEGACY_RESIDUE_COUNT=' || count(*)
-from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-where n.nspname='public'
-  and p.proname in ('create_partner_voucher','create_partner_voucher_controlled','sync_single_voucher_partner_engine')
-  and (
-    pg_get_functiondef(p.oid) ilike '%EVO-FREE-GLASSES%'
-    or pg_get_functiondef(p.oid) ilike '%RM60%'
-    or pg_get_functiondef(p.oid) ilike '%Asia/Kuala_Lumpur%'
-    or pg_get_functiondef(p.oid) ilike '%EO-%'
-  );
-
-select 'CONTROLLED_CALLS_GENERIC=' || exists (
-  select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-  where n.nspname='public' and p.proname='create_partner_voucher_controlled'
-    and pg_get_functiondef(p.oid) ilike '%create_partner_multi_voucher_controlled%'
-);
-
-select 'SYNC_IS_NOOP=' || exists (
-  select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-  where n.nspname='public' and p.proname='sync_single_voucher_partner_engine'
-    and pg_get_functiondef(p.oid) ilike '%return new%'
-    and pg_get_functiondef(p.oid) not ilike '%insert into public.partner_voucher_access%'
-);
-ROLLBACK;
-SQL
+            echo "select 'FUNCTION_COUNT=' || count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('create_partner_voucher','create_partner_voucher_controlled','sync_single_voucher_partner_engine');"
+            echo "select 'LEGACY_RESIDUE_COUNT=' || count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname in ('create_partner_voucher','create_partner_voucher_controlled','sync_single_voucher_partner_engine') and (pg_get_functiondef(p.oid) ilike '%EVO-FREE-GLASSES%' or pg_get_functiondef(p.oid) ilike '%RM60%' or pg_get_functiondef(p.oid) ilike '%Asia/Kuala_Lumpur%' or pg_get_functiondef(p.oid) ilike '%EO-%');"
+            echo "select 'CONTROLLED_CALLS_GENERIC=' || exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='create_partner_voucher_controlled' and pg_get_functiondef(p.oid) ilike '%create_partner_multi_voucher_controlled%');"
+            echo "select 'SYNC_IS_NOOP=' || exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='sync_single_voucher_partner_engine' and pg_get_functiondef(p.oid) ilike '%return new%' and pg_get_functiondef(p.oid) not ilike '%insert into public.partner_voucher_access%');"
+            echo 'ROLLBACK;'
           } | psql -v ON_ERROR_STOP=1 -At | tee /tmp/phase2f.result
-
           grep -qx 'FUNCTION_COUNT=3' /tmp/phase2f.result
           grep -qx 'LEGACY_RESIDUE_COUNT=0' /tmp/phase2f.result
           grep -qx 'CONTROLLED_CALLS_GENERIC=true' /tmp/phase2f.result
