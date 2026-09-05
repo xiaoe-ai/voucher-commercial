@@ -371,10 +371,10 @@ function renderVouchers(){
  $("voucherRecords").innerHTML=list.length?list.map(v=>{
    const st=voucherEffectiveStatus(v);
    const redeemedBranch=redeemedBranchLabel(v);
-   return `<div class="vrecord"><div class="vtop"><div style="flex:1"><div class="vcode">${esc(v.voucher_code||v.id||"Voucher")}</div><div class="pcode">${esc(v.voucher_type||"RM60 Free Glasses")}</div></div><span class="vstatus ${st.toLowerCase()}">${st}</span></div>
+   return `<div class="vrecord"><div class="vtop"><div style="flex:1"><div class="vcode">${esc(v.voucher_code||v.id||"Voucher")}</div><div class="pcode">${esc(v.voucher_type||"Voucher")}</div></div><span class="vstatus ${st.toLowerCase()}">${st}</span></div>
    <div class="vmeta"><b>Customer:</b> ${esc(v.customer_name||"—")} ${v.customer_phone?`• ${esc(v.customer_phone)}`:""}<br>
    <b>Issued by:</b> ${esc(partnerNameFor(v))}<br>
-   <b>Voucher Type:</b> ${esc(v.voucher_type||"RM60 Free Glasses")}<br>
+   <b>Voucher Type:</b> ${esc(v.voucher_type||"Voucher")}<br>
    <b>Valid Until:</b> ${esc(v.expiry_date||"—")}<br>
    <b>Redeem at:</b> ${esc(branchLabel(v))}<br>
    <b>Issued:</b> ${fmtDate(v.issued_at)}${st==="REDEEMED"?`<br><b>Redeemed:</b> ${fmtDate(v.redeemed_at)}<br><b>Redeemed Branch:</b> ${esc(redeemedBranch)}`:""}</div></div>`;
@@ -410,7 +410,7 @@ function exportVoucherExcel(){
  ws["!autofilter"]={ref:ws["!ref"]};
  const wb=XLSX.utils.book_new();
  XLSX.utils.book_append_sheet(wb,ws,"Voucher Records");
- XLSX.writeFile(wb,`evolution-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`);
+ XLSX.writeFile(wb,`commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`);
  msg($("voucherMsg"),`Excel exported: ${list.length} voucher record${list.length===1?"":"s"}.`,true);
 }
 function clearVoucherFilters(){
