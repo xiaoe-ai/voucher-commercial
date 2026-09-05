@@ -90,6 +90,7 @@
   async function save(profile) {
     const next = saveLocal(profile);
     apply(next);
+    installExportGuard(next);
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
 
     const db = getDb();
@@ -111,6 +112,42 @@
     nodes.forEach(node => {
       if (node.nodeValue && node.nodeValue.includes(from)) node.nodeValue = node.nodeValue.split(from).join(to);
     });
+  }
+
+  function slugifyCompanyName(value) {
+    const slug = String(value || DEFAULTS.companyName)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return slug || 'commercial';
+  }
+
+  function commercialExportFilename(date = new Date(), profile = loadLocal()) {
+    return `${slugifyCompanyName(profile.companyName)}-vouchers-${date.toISOString().slice(0, 10)}.xlsx`;
+  }
+
+  function installExportGuard(profile = loadLocal()) {
+    if (window.__commercialExportGuardInstalled) return;
+    const tryInstall = () => {
+      if (!window.XLSX?.writeFile) return false;
+      const original = window.XLSX.writeFile.bind(window.XLSX);
+      window.XLSX.writeFile = (workbook, filename, ...rest) => {
+        let nextName = String(filename || '');
+        if (!nextName || /evolution[-_ ]?vouchers/i.test(nextName) || /^commercial[-_ ]?vouchers/i.test(nextName)) {
+          nextName = commercialExportFilename(new Date(), profile);
+        }
+        return original(workbook, nextName, ...rest);
+      };
+      window.__commercialExportGuardInstalled = true;
+      return true;
+    };
+    if (tryInstall()) return;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (tryInstall() || attempts >= 40) clearInterval(timer);
+    }, 250);
   }
 
   function apply(profile = loadLocal()) {
@@ -144,6 +181,7 @@
   async function reset() {
     localStorage.removeItem(KEY);
     apply(DEFAULTS);
+    installExportGuard(DEFAULTS);
     const db = getDb();
     if (!db) return;
     try { await db.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
@@ -158,10 +196,17 @@
     loadRemote,
     save,
     apply,
-    reset
+    reset,
+    slugifyCompanyName,
+    commercialExportFilename
   };
 
-  const boot = async () => { apply(loadLocal()); await load(); };
+  const boot = async () => {
+    const profile = loadLocal();
+    apply(profile);
+    installExportGuard(profile);
+    await load();
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })();
