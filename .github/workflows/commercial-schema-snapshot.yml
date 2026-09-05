@@ -47,17 +47,26 @@ jobs:
           echo "Connected as: $result"
           test "$result" = 'postgres|postgres'
 
-      - name: Export public schema only
+      - name: Export public schema only with PostgreSQL 17 client
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p snapshot
-          pg_dump \
-            --schema=public \
-            --schema-only \
-            --no-owner \
-            --no-privileges \
-            --file=snapshot/commercial-public-schema.sql
+          docker run --rm \
+            -e PGHOST \
+            -e PGPORT \
+            -e PGDATABASE \
+            -e PGUSER \
+            -e PGSSLMODE \
+            -e PGPASSWORD \
+            -v "$PWD/snapshot:/snapshot" \
+            postgres:17 \
+            pg_dump \
+              --schema=public \
+              --schema-only \
+              --no-owner \
+              --no-privileges \
+              --file=/snapshot/commercial-public-schema.sql
           test -s snapshot/commercial-public-schema.sql
           sha256sum snapshot/commercial-public-schema.sql | tee snapshot/commercial-public-schema.sha256
 
