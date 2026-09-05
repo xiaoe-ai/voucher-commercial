@@ -1,0 +1,58 @@
+name: Remove Commercial Homepage Logo Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/remove-commercial-logo-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  remove-logo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Remove homepage inline logo only
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+
+          pattern = r'\n\s*<svg\s+class="logo".*?</svg>\s*\n'
+          updated, count = re.subn(pattern, '\n', text, count=1, flags=re.S)
+
+          if count != 1:
+              raise SystemExit(f'Expected exactly one homepage logo SVG, removed {count}')
+
+          path.write_text(updated, encoding='utf-8')
+          print('Removed exactly one homepage logo SVG.')
+
+      - name: Verify title remains and logo is gone
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'COMMERCIAL VOUCHER' index.html
+          if grep -q '<svg[[:space:]]*class="logo"' index.html; then
+            echo 'Logo still present.'
+            exit 1
+          fi
+          echo 'Homepage title retained; logo removed.'
+
+      - name: Commit cleanup and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/remove-commercial-logo-once.yml
+          git add index.html
+          git commit -m 'fix: remove company logo from Commercial Voucher homepage'
+          git push origin main
