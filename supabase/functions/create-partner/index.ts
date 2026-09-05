@@ -44,7 +44,6 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const partner_code = typeof body.partner_code === "string" ? body.partner_code.trim().toUpperCase() : "";
     const partner_name = typeof body.partner_name === "string" ? body.partner_name.trim() : "";
     const contact_person = typeof body.contact_person === "string" ? body.contact_person.trim() : null;
     const contact_phone = typeof body.contact_phone === "string" ? body.contact_phone.trim() : null;
@@ -53,8 +52,7 @@ serve(async (req) => {
     const voucher_limit = Number(body.voucher_limit ?? 0);
     const staff_limit = Number(body.staff_limit ?? 0);
 
-    if (!partner_code || !partner_name || !email || !password) return json({ success: false, error: "Missing required fields" }, 400);
-    if (!/^[A-Z0-9_-]+$/.test(partner_code)) return json({ success: false, error: "Invalid partner code" }, 400);
+    if (!partner_name || !email || !password) return json({ success: false, error: "Missing required fields" }, 400);
     if (!email.includes("@")) return json({ success: false, error: "Invalid email" }, 400);
     if (password.length < 6) return json({ success: false, error: "Password must be at least 6 characters" }, 400);
     if (!Number.isInteger(voucher_limit) || voucher_limit < 0 || !Number.isInteger(staff_limit) || staff_limit < 0) {
@@ -74,7 +72,7 @@ serve(async (req) => {
     const { data: provisioned, error: provisionError } = await server.rpc("service_provision_partner", {
       p_actor_user_id: caller.id,
       p_new_user_id: newUser.id,
-      p_partner_code: partner_code,
+      p_partner_code: "",
       p_partner_name: partner_name,
       p_contact_person: contact_person,
       p_contact_phone: contact_phone,
