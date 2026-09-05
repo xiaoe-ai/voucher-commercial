@@ -1,4 +1,4 @@
-const CACHE_NAME = 'commercial-voucher-app-shell-v2';
+const CACHE_NAME = 'commercial-voucher-app-shell-v3';
 
 const STATIC_ASSETS = [
   './offline.html',
@@ -12,7 +12,8 @@ const STATIC_ASSETS = [
   './staff-icon-192.png',
   './staff-icon-512.png',
   './commercial-brand.js',
-  './company-setup.html'
+  './company-setup.html',
+  './voucher.html'
 ];
 
 self.addEventListener('install', event => {
