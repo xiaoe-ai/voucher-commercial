@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "project_key": "voucher_commercial",
   "status": "ACTIVE",
   "owner_orchestrator": "Xiao-E",
@@ -14,16 +14,25 @@
     "remote_function": "xiaoe-voucher-bridge",
     "allowed_actions": ["health", "read", "insert", "update", "upsert", "delete", "rpc"]
   },
+  "xiaoe_runtime": {
+    "host_project_ref": "pgdnwjgfxpaszazuofns",
+    "invoke_gateway": "commercial-invoke-gateway",
+    "bridge_function": "external-supabase-bridge",
+    "gateway_url": "https://pgdnwjgfxpaszazuofns.supabase.co/functions/v1/commercial-invoke-gateway",
+    "auth_header": "X-XiaoE-Runtime-Key",
+    "store_runtime_key_here": false
+  },
   "routing": {
     "hard_route_lock": true,
     "cross_project_fallback": false,
     "native_connector_account_switch_required": false,
     "deny_targets": ["production", "stage", "daughter", "xiaoe-core"],
-    "rule": "Commercial Voucher operations must resolve to target=commercial and project_ref=hukihbcyyqhanaqrizvm before execution. Never fall back to another Supabase project or require the owner to switch Supabase accounts when the Xiao-E external bridge is healthy."
+    "rule": "Commercial Voucher operations must enter through Xiao-E commercial-invoke-gateway, resolve to target=commercial and project_ref=hukihbcyyqhanaqrizvm, and never fall back to another Supabase project."
   },
   "secrets": {
     "store_values_here": false,
-    "credential_reference": "XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN"
+    "credential_reference": "XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN",
+    "runtime_key_reference": "X-XiaoE-Runtime-Key"
   },
   "verified_on": "2026-09-05"
 }
