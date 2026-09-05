@@ -1,0 +1,115 @@
+name: Commercial Frontend Runtime Neutralization V2
+
+on:
+  push:
+    paths:
+      - '.github/frontend-runtime-neutralization-v2-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply guarded current-runtime cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = {
+            'admin.html': Path('admin.html'),
+            'admin-core.html': Path('admin-core.html'),
+            'staff.html': Path('staff.html'),
+            'voucher-engine.html': Path('voucher-engine.html'),
+          }
+          text = {k:p.read_text() for k,p in files.items()}
+
+          # Admin current runtime
+          a=text['admin.html']
+          a=a.replace('name="eo-admin-build"','name="commercial-admin-build"')
+          a=a.replace('toLocaleString("en-MY",{maximumFractionDigits:2})','toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})')
+          a=a.replace('toLocaleString("en-MY")','toLocaleString(navigator.language||"en-US")')
+          a=a.replace('Cannot set below RM60 vouchers already issued.','Cannot set below vouchers already issued.')
+          a=a.replace('Set ${p.partner_name} RM60 total voucher limit to ${n}?','Set ${p.partner_name} total voucher limit to ${n}?')
+          a=a.replace('`RM${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `','`Value ${Number(ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})} • `')
+          a=a.replace('`RM${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`','`Value ${Number(r.ver.face_value).toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})}`')
+          a=a.replace('`evolution-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`','`commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`')
+          text['admin.html']=a
+
+          # Admin core / Staff current runtime: locale-only neutralization and technical meta if present.
+          for k in ('admin-core.html','staff.html'):
+            s=text[k]
+            s=s.replace('toLocaleString("en-MY",{maximumFractionDigits:2})','toLocaleString(navigator.language||"en-US",{maximumFractionDigits:2})')
+            s=s.replace('toLocaleString("en-MY")','toLocaleString(navigator.language||"en-US")')
+            s=s.replace('name="eo-admin-build"','name="commercial-admin-build"')
+            s=s.replace('name="eo-staff-build"','name="commercial-staff-build"')
+            text[k]=s
+
+          # Voucher Engine current runtime
+          v=text['voucher-engine.html']
+          v=v.replace('name="eo-voucher-engine-build"','name="commercial-voucher-engine-build"')
+          v=v.replace('window.EOVoucherThemes','window.CommercialVoucherThemes')
+          v=v.replace('Template Code</label><input id="tCode" placeholder="e.g. VOUCHER-RM100"','Template Code</label><input id="tCode" placeholder="e.g. CASH-100"')
+          v=v.replace('Template Name</label><input id="tName" placeholder="RM100 Voucher"','Template Name</label><input id="tName" placeholder="100 Value Voucher"')
+          v=v.replace('Face Value (RM)','Face Value')
+          v=v.replace('Minimum Spend (RM)','Minimum Spend')
+          text['voucher-engine.html']=v
+
+          forbidden={
+            'admin.html':['eo-admin-build','en-MY','RM60','evolution-vouchers-','`RM${Number(ver.face_value)','`RM${Number(r.ver.face_value)'],
+            'admin-core.html':['en-MY','eo-admin-build'],
+            'staff.html':['en-MY','eo-staff-build'],
+            'voucher-engine.html':['eo-voucher-engine-build','EOVoucherThemes','VOUCHER-RM100','RM100 Voucher','Face Value (RM)','Minimum Spend (RM)'],
+          }
+          for k,bad in forbidden.items():
+            remain=[x for x in bad if x in text[k]]
+            if remain:
+              raise SystemExit(f'{k} cleanup incomplete: {remain}')
+
+          required={
+            'admin.html':['commercial-admin-build','commercial-vouchers-','navigator.language||"en-US"'],
+            'voucher-engine.html':['commercial-voucher-engine-build','CommercialVoucherThemes','Face Value','Minimum Spend'],
+          }
+          for k,need in required.items():
+            miss=[x for x in need if x not in text[k]]
+            if miss:
+              raise SystemExit(f'{k} expected canonical fragments missing: {miss}')
+
+          for k,p in files.items(): p.write_text(text[k])
+          PY
+
+      - name: Static assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ! grep -q 'en-MY' admin.html admin-core.html staff.html
+          ! grep -q 'EOVoucherThemes' voucher-engine.html
+          ! grep -q 'eo-voucher-engine-build' voucher-engine.html
+          ! grep -q 'evolution-vouchers-' admin.html
+          ! grep -q 'RM60' admin.html
+          grep -q 'commercial-admin-build' admin.html
+          grep -q 'commercial-voucher-engine-build' voucher-engine.html
+          grep -q 'CommercialVoucherThemes' voucher-engine.html
+
+      - name: Commit runtime cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- admin.html admin-core.html staff.html voucher-engine.html; then
+            echo 'No runtime cleanup changes required.'
+            exit 0
+          fi
+          git config user.name 'Xiao-E-26'
+          git config user.email 'xiaoeai2026@gmail.com'
+          git add admin.html admin-core.html staff.html voucher-engine.html
+          git commit -m 'Neutralize remaining Commercial frontend runtime identifiers'
+          git push origin HEAD:main
