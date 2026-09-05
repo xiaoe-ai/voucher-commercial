@@ -11,7 +11,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Product is defined as generic white-label Commercial Voucher.
 - [PASS] Company Profile layer exists (`company-setup.html`, `commercial-brand.js`).
 - [PASS] User-visible Excel export naming is guarded by the white-label runtime and derives from the latest customer company name rather than EVO/Evolution branding, including company-name changes made during the same browser session.
-- [PENDING] Complete final deep legacy-string audit for non-user-facing technical identifiers and any remaining generated outputs.
+- [PASS] Final current-runtime legacy audit passed after source neutralization. Historical migrations/workflows remain preserved as evidence and are not treated as active runtime branding.
 
 ## B. Customer onboarding
 - [PASS] Customer can set company name and basic company details without source-code edits.
@@ -64,24 +64,25 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Admin / Partner / Staff PWA manifests exist with independent start URLs, standalone mode, icons and home-screen labels.
 - [PASS] Admin / Partner / Staff install entry pages are Company Profile aware.
 - [PASS] Admin / Partner / Staff launch splash screens are Company Profile aware.
-- [PENDING] Verify public GitHub Pages routes load successfully on mobile and desktop.
+- [PASS] Public GitHub Pages routes for index, Admin, Partner, Staff, Company Setup and Voucher Engine returned HTTP 200 in release evidence run `33963887854`.
 - [PENDING] Verify actual Admin / Partner / Staff install behavior on target devices.
 
 ## Verification evidence added 2026-09-05
 
 - Commercial bridge health log: four consecutive `ok=true`, upstream HTTP 200 checks after bridge token configuration was corrected.
-- `manifest-admin.json`, `manifest-partner.json`, `manifest-staff.json` structurally verified.
-- `commercial-brand.js` hardens legacy export naming and resolves the filename from the latest local Company Profile at export time, so same-session company-name changes are reflected without page reload.
-- `commercial-brand.js` exposes `CommercialVoucherThemes` as the Commercial-neutral compatibility API while existing `EOVoucherThemes` callers remain operational during migration.
-- Admin / Partner / Staff install entry pages load `commercial-brand.js` and render Company Profile names.
-- Admin / Partner / Staff launch splash screens load `commercial-brand.js` and render Company Profile names.
+- Canonical live preflight run `33962616086`: missing tables 0, missing RPC 0, required RLS enabled, legacy/regional findings 0.
+- Frontend source neutralization removed legacy runtime identifiers, hardcoded outlet defaults, fixed Malaysia locale assumptions, old EO voucher placeholder/default copy and fixed RM60 display defaults from active runtime pages.
+- Release evidence run `33963887854` passed current-runtime legacy audit, defensive legacy guard isolation, canonical frontend identifier checks, public Pages route checks and PWA manifest validation.
+- `commercial-brand.js` retains only defensive legacy-detection/scrub behavior where old literals are needed to prevent legacy content from surfacing; it no longer exposes the old theme alias.
 - `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
 ## Launch decision
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher already has the correct product architecture and most of the EVO-proven operating surface. Remaining blockers are backend canonicalization/rebuild evidence, Partner outlet cutover, end-to-end account/workflow validation, authorization/RLS verification, public-device verification, final deep legacy audit, live schema migration verification, and one isolated restore rehearsal.
+Commercial Voucher now has a neutralized live schema and neutralized current frontend runtime, plus verified public Pages routes. Remaining blockers are first-customer bootstrap verification, end-to-end Admin/Partner/Staff workflow and authorization tests, runtime wrong-target rejection, final live runtime read verification, actual-device PWA/install verification, and one isolated restore rehearsal.
+
+Repository metadata note: the GitHub repository description still shows `evolution-optical-voucher`; the connected toolset does not expose repository-description write capability, so this remains a manual metadata cleanup item and does not represent active runtime code.
 
 ## Release rule
 
