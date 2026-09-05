@@ -50,14 +50,14 @@ jobs:
           echo "Connected as: $result"
           test "$result" = 'postgres|postgres'
 
-      - name: Execute read-only preflight
+      - name: Execute read-only preflight in one transaction
         shell: bash
         run: |
           set -euo pipefail
-          psql -v ON_ERROR_STOP=1 <<'SQL'
-          begin;
-          set transaction read only;
-          SQL
-          psql -v ON_ERROR_STOP=1 -f "$PREFLIGHT_PATH"
-          psql -v ON_ERROR_STOP=1 -c 'rollback;'
-          echo 'Commercial canonical preflight completed in read-only mode.'
+          {
+            echo 'BEGIN;'
+            echo 'SET TRANSACTION READ ONLY;'
+            cat "$PREFLIGHT_PATH"
+            echo 'ROLLBACK;'
+          } | psql -v ON_ERROR_STOP=1
+          echo 'Commercial canonical preflight completed in one read-only transaction.'
