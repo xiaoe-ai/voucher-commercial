@@ -57,7 +57,10 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Backup and recovery procedure documented in `COMMERCIAL_BACKUP_RECOVERY_V1.md`, including backup scope, checkpoint triggers, isolated restore order, integrity checks and live-recovery safety rules.
 - [PASS] Canonical SQL rebuild completed successfully in an isolated PostgreSQL 17 container, with canonical files applied deterministically, required tables/RPCs present, RLS checks passing, and executable SQL passing Commercial-neutral legacy guards.
 - [PASS] Isolated database restore rehearsal completed successfully in workflow run `33966962154`: PostgreSQL 17 logical backup was created, restored into a blank isolated target, canonical grants were reapplied, schema/functions/RLS/business fixture integrity passed, restored Partner/Staff authorization isolation passed, and no legacy customer seed data was present.
-- [PENDING] Complete full application recovery rehearsal including canonical Edge Function source/deployment and post-recovery Admin -> Partner -> Staff -> issue -> verify -> redeem flow.
+- [PASS] All 9 live Commercial Edge Function sources are archived under `supabase/functions/`, with live version / `verify_jwt` / source SHA recorded in `COMMERCIAL_EDGE_FUNCTION_SOURCE_MANIFEST_V1.md`.
+- [PASS] Edge source/build rehearsal run `33969245334` passed required source-tree checks, Deno type-check for all 9 functions, Commercial-neutral contamination scan, Commercial bridge binding checks, JWT manifest validation and source-evidence emission without mutating live deployment.
+- [PENDING] Deploy the archived Edge Function sources into an isolated recovery Supabase target and verify function startup/configuration parity.
+- [PENDING] Complete post-recovery Admin -> Partner -> Staff -> issue -> verify -> redeem end-to-end flow on the isolated recovery target.
 
 ## H. Public/PWA entry points
 - [PASS] Admin portal exists.
@@ -82,6 +85,8 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - Isolated canonical rebuild run `33966478168` verified the expanded canonical baseline, including `admin_bootstrap_config` and `service_bootstrap_first_admin`; the first Admin bootstrap test passed, consumed its one-time setup state, and rejected a second bootstrap attempt.
 - Isolated authorization workflow run `33966609022` passed Admin / Partner / Staff RLS isolation and cross-partner unauthorized update rejection.
 - Isolated database restore workflow run `33966962154` passed backup, blank-target restore, canonical grant reapplication, schema/functions/RLS/data integrity, post-restore authorization isolation and legacy-seed absence.
+- Commercial live Edge Function inventory contains 9 active functions; their source is archived in GitHub and version/JWT/source-hash evidence is captured in `COMMERCIAL_EDGE_FUNCTION_SOURCE_MANIFEST_V1.md`.
+- Edge source/build rehearsal run `33969245334` passed all source validation steps and recorded `LIVE_DEPLOYMENT_MUTATED=false`.
 - `commercial-brand.js` retains only defensive legacy-detection/scrub behavior where old literals are needed to prevent legacy content from surfacing; it no longer exposes the old theme alias.
 - `COMMERCIAL_BACKUP_RECOVERY_V1.md` defines the canonical backup and restore procedure without storing secret values.
 
@@ -89,7 +94,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only runtime routing including negative rejection tests, a successful final runtime read, a verified isolated canonical rebuild with one-time first Admin bootstrap behavior, a passing isolated Admin/Partner/Staff authorization matrix, and a successful isolated database backup/restore rehearsal. Remaining blockers are live end-to-end role login/workflow verification, actual-device branding/PWA verification, and completion of full application recovery with canonical Edge Function source/deployment.
+Commercial Voucher now has a neutralized live schema and frontend runtime, verified Commercial-only routing, a successful runtime read, a verified isolated canonical rebuild and authorization matrix, a successful isolated database backup/restore rehearsal, and a complete archived/type-checked Edge Function source set. Remaining blockers are live end-to-end role/workflow verification, actual-device branding/PWA verification, isolated Edge Function deployment recovery, and post-recovery application E2E verification.
 
 Repository metadata note: the GitHub repository description still shows `evolution-optical-voucher`; the connected toolset does not expose repository-description write capability, so this remains a manual metadata cleanup item and does not represent active runtime code.
 
