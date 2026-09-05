@@ -100,6 +100,7 @@
     installExportGuard(next);
     installLegacyVisibleGuard();
     installPartnerCodeAutoUI();
+    installAdminAuthNavGuard();
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
 
     const dbClient = getDb();
@@ -163,6 +164,38 @@
     applyAuto();
     if (!window.__commercialPartnerCodeAutoTimer) {
       window.__commercialPartnerCodeAutoTimer = setInterval(applyAuto, 500);
+    }
+  }
+
+  function installAdminAuthNavGuard() {
+    const sync = () => {
+      const loginCard = document.getElementById('loginCard');
+      const nav = document.getElementById('bottomNav');
+      if (!loginCard || !nav) return false;
+      const loggedOut = !loginCard.classList.contains('hidden');
+      nav.classList.toggle('hidden', loggedOut);
+      return true;
+    };
+
+    sync();
+    if (window.__commercialAdminAuthNavGuardInstalled) return;
+    window.__commercialAdminAuthNavGuardInstalled = true;
+
+    const observer = new MutationObserver(sync);
+    const attach = () => {
+      const loginCard = document.getElementById('loginCard');
+      if (!loginCard) return false;
+      observer.observe(loginCard, { attributes: true, attributeFilter: ['class'] });
+      sync();
+      return true;
+    };
+
+    if (!attach()) {
+      let attempts = 0;
+      const timer = setInterval(() => {
+        attempts += 1;
+        if (attach() || attempts >= 40) clearInterval(timer);
+      }, 250);
     }
   }
 
@@ -233,6 +266,7 @@
     });
     scrubLegacyVisibleText();
     installPartnerCodeAutoUI();
+    installAdminAuthNavGuard();
   }
 
   async function reset() {
@@ -241,6 +275,7 @@
     installExportGuard(DEFAULTS);
     installLegacyVisibleGuard();
     installPartnerCodeAutoUI();
+    installAdminAuthNavGuard();
     const dbClient = getDb();
     if (!dbClient) return;
     try { await dbClient.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
@@ -267,6 +302,7 @@
     installExportGuard(profile);
     installLegacyVisibleGuard();
     installPartnerCodeAutoUI();
+    installAdminAuthNavGuard();
     await load();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
