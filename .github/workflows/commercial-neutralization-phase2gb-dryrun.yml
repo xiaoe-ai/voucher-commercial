@@ -53,7 +53,7 @@ jobs:
             echo 'BEGIN;'
             cat "$MIGRATION_PATH"
             echo "select 'NO_FIXED_KL=' || (position('Asia/Kuala_Lumpur' in pg_get_functiondef(p.oid))=0) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='system_integrity_health_check';"
-            echo "select 'NO_FIXED_3_MONTH=' || (position(\"interval '3 months'\" in pg_get_functiondef(p.oid))=0) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='system_integrity_health_check';"
+            echo "select 'NO_FIXED_3_MONTH=' || (position('3 months' in pg_get_functiondef(p.oid))=0) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='system_integrity_health_check';"
             echo "select 'VERSION_AWARE=' || (pg_get_functiondef(p.oid) ilike '%voucher_versions%' and pg_get_functiondef(p.oid) ilike '%valid_months%' and pg_get_functiondef(p.oid) ilike '%valid_days%' and pg_get_functiondef(p.oid) ilike '%valid_until%') from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='system_integrity_health_check';"
             echo "select 'NEW_CRON=' || count(*) from cron.job where jobname='commercial_integrity_health_hourly' and schedule='7 * * * *' and command='select public.run_system_integrity_monitor();' and active=true;"
             echo "select 'OLD_CRON=' || count(*) from cron.job where jobname='evolution_integrity_health_hourly';"
