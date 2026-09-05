@@ -1,17 +1,15 @@
-Evolution Optical Home Screen Icons — FINAL
+Commercial Voucher Platform — Canonical Routing
 
-COMMERCIAL VOUCHER CANONICAL ROUTING — FINAL
 Canonical GitHub source: https://github.com/xiaoe-ai/voucher-commercial
 Canonical branch: main
-Production/Public GitHub Pages route: https://xiaoe-ai.github.io/evolution-optical-voucher/
+Canonical public GitHub Pages route: https://xiaoe-ai.github.io/voucher-commercial/
 
 IMPORTANT:
 - voucher-commercial is the canonical source repository for Commercial Voucher.
-- evolution-optical-voucher is the retained production/public Pages route alias.
-- The Pages alias must NOT be treated as a separate Voucher project.
-- Do not change the production/public route solely to match the repository name; existing access links and QR/share flows may depend on this stable route.
+- Commercial Voucher is a generic white-label voucher platform and must not depend on Evolution Optical branding or routes.
 - Commercial Voucher Supabase project ref: hukihbcyyqhanaqrizvm
-- Commercial Voucher must remain isolated from EVO Voucher and Voucher Stage routes/projects.
+- Commercial Voucher must remain isolated from EVO Voucher Production and Voucher Stage routes/projects.
+- Customer branding is configured through the Company Profile layer.
 
 The icon artwork has NO built-in Admin/Partner/Staff caption.
 The phone itself will display the correct label under the icon.
