@@ -147,22 +147,22 @@ jobs:
             end if;
           end $$;
           reset role;
-          select 'PARTNER_ISSUE_OK=true';
           SQL
+          psql -Atqc "select voucher_code from public.vouchers where customer_name='Recovery Test Customer' order by issued_at desc limit 1" > /tmp/voucher_code
+          test -s /tmp/voucher_code
+          echo 'PARTNER_ISSUE_OK=true'
 
       - name: Staff verifies and redeems voucher
         shell: bash
         run: |
           set -euo pipefail
-          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CODE=$(cat /tmp/voucher_code)
+          psql -v ON_ERROR_STOP=1 -v voucher_code="$CODE" <<'SQL'
           set role authenticated;
           select set_config('request.jwt.claim.sub','dddddddd-dddd-4ddd-8ddd-dddddddddddd',false);
           do $$
-          declare code text; v jsonb; r jsonb; r2 jsonb;
+          declare code text := :'voucher_code'; v jsonb; r jsonb; r2 jsonb;
           begin
-            select voucher_code into code from public.vouchers where customer_name='Recovery Test Customer' limit 1;
-            if code is null then raise exception 'Issued voucher missing'; end if;
-
             v := public.verify_voucher(code);
             if coalesce((v->>'success')::boolean,false) is not true then
               raise exception 'Verify failed: %', v;
@@ -182,7 +182,9 @@ jobs:
             end if;
           end $$;
           reset role;
+          SQL
 
+          psql -v ON_ERROR_STOP=1 <<'SQL'
           do $$ begin
             if (select count(*) from public.redemptions where status='success') <> 1 then
               raise exception 'Expected exactly one successful redemption';
@@ -191,9 +193,9 @@ jobs:
               raise exception 'Voucher status did not become redeemed';
             end if;
           end $$;
-          select 'STAFF_VERIFY_REDEEM_OK=true';
-          select 'DOUBLE_REDEEM_BLOCKED=true';
           SQL
+          echo 'STAFF_VERIFY_REDEEM_OK=true'
+          echo 'DOUBLE_REDEEM_BLOCKED=true'
 
       - name: Emit business E2E evidence
         shell: bash
