@@ -1,0 +1,98 @@
+name: Commercial Edge Source Check
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/commercial-edge-source-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  edge-source-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Verify required function source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=(
+            create-partner
+            create-staff
+            reset-partner-password
+            manage-partner-staff
+            admin-set-partner-staff-limit
+            voucher-engine-admin
+            bootstrap-admin
+            voucher-engine
+            xiaoe-voucher-bridge
+          )
+          for fn in "${required[@]}"; do
+            test -s "supabase/functions/$fn/index.ts" || { echo "Missing source: $fn"; exit 1; }
+          done
+          test "$(find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts | wc -l)" -ge 9
+          echo 'EDGE_SOURCE_TREE_OK=true'
+
+      - name: Type-check Edge Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in supabase/functions/*/index.ts; do
+            echo "Checking $f"
+            deno check "$f"
+          done
+          echo 'EDGE_DENO_CHECK_OK=true'
+
+      - name: Verify Commercial-neutral source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RniE \
+            'Evolution Optical|EVO12345678|XIAOE_VOUCHER_STAGE_BRIDGE_TOKEN|tagusbcluzoxueixjmwh|xfivcfwexcxsyiylgryn|evo_voucher_production|voucher_stage' \
+            supabase/functions --include='*.ts'; then
+            echo 'Legacy or cross-project identifier found in canonical Edge source.'
+            exit 1
+          fi
+          echo 'EDGE_COMMERCIAL_NEUTRAL_OK=true'
+
+      - name: Verify bridge hard binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          bridge='supabase/functions/xiaoe-voucher-bridge/index.ts'
+          grep -q 'hukihbcyyqhanaqrizvm' "$bridge"
+          grep -q 'XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN' "$bridge"
+          grep -q 'x-xiaoe-bridge-token' "$bridge"
+          grep -q '"health","read","insert","update","upsert","delete","rpc"' "$bridge"
+          echo 'EDGE_COMMERCIAL_BRIDGE_BINDING_OK=true'
+
+      - name: Verify JWT policy manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest='supabase/functions/COMMERCIAL_EDGE_FUNCTION_SOURCE_MANIFEST_V1.md'
+          test -s "$manifest"
+          for fn in create-partner create-staff reset-partner-password manage-partner-staff admin-set-partner-staff-limit voucher-engine-admin bootstrap-admin voucher-engine xiaoe-voucher-bridge; do
+            grep -q "$fn" "$manifest" || { echo "Missing manifest entry: $fn"; exit 1; }
+          done
+          grep -q 'bootstrap-admin.*false' "$manifest"
+          grep -q 'xiaoe-voucher-bridge.*false' "$manifest"
+          echo 'EDGE_JWT_MANIFEST_OK=true'
+
+      - name: Emit Edge source evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'COMMERCIAL_EDGE_SOURCE_REHEARSAL_OK=true'
+          echo 'EDGE_FUNCTION_COUNT=9'
+          echo 'LIVE_DEPLOYMENT_MUTATED=false'
+          find supabase/functions -mindepth 2 -maxdepth 2 -name index.ts -print0 | sort -z | xargs -0 sha256sum
