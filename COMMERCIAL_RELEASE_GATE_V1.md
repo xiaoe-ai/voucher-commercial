@@ -10,7 +10,8 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Canonical Supabase project ref is `hukihbcyyqhanaqrizvm`.
 - [PASS] Product is defined as generic white-label Commercial Voucher.
 - [PASS] Company Profile layer exists (`company-setup.html`, `commercial-brand.js`).
-- [PENDING] Remove all remaining EVO/Evolution legacy strings from deep code paths and generated filenames.
+- [PASS] User-visible Excel export naming is guarded by the white-label runtime and derives from customer company name rather than EVO/Evolution branding.
+- [PENDING] Complete final deep legacy-string audit for non-user-facing technical identifiers and any remaining generated outputs.
 
 ## B. Customer onboarding
 - [PASS] Customer can set company name and basic company details without source-code edits.
@@ -30,7 +31,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PENDING] Partner: issue voucher -> generate customer voucher / QR.
 - [PENDING] Staff: scan / lookup -> validate -> redeem -> history.
 - [PENDING] Voucher expiry and revoked/suspended behavior.
-- [PENDING] Reporting and Excel export verification.
+- [PENDING] Reporting and Excel export end-to-end verification with customer-derived filename.
 
 ## E. Isolation
 - [PASS] Commercial routing is locked to `hukihbcyyqhanaqrizvm`.
@@ -43,7 +44,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Runtime mode and migration mode remain credential-separated.
 - [PASS] Runtime route uses Commercial bridge target.
 - [PASS] Migration route uses manual GitHub workflow / Session Pooler.
-- [PENDING] Live runtime `health` verification for final release.
+- [PASS] Live runtime health verification: Commercial health checks returned `ok=true`, HTTP 200 on four consecutive checks on 2026-09-05 after an earlier bridge-token configuration failure was corrected.
 - [PENDING] Live runtime `read` verification after final schema freeze.
 
 ## G. Migration and recovery
@@ -59,14 +60,21 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Partner portal exists.
 - [PASS] Staff portal exists.
 - [PASS] Company Setup exists.
+- [PASS] Admin / Partner / Staff PWA manifests exist with independent start URLs, standalone mode, icons and home-screen labels.
 - [PENDING] Verify public GitHub Pages routes load successfully on mobile and desktop.
-- [PENDING] Verify Admin / Partner / Staff install manifests and home-screen labels.
+- [PENDING] Verify actual Admin / Partner / Staff install behavior on target devices.
+
+## Verification evidence added 2026-09-05
+
+- Commercial bridge health log: four consecutive `ok=true`, upstream HTTP 200 checks after bridge token configuration was corrected.
+- `manifest-admin.json`, `manifest-partner.json`, `manifest-staff.json` structurally verified.
+- `commercial-brand.js` hardened so legacy `evolution-vouchers-*` or generic Commercial export filenames are replaced at runtime with a customer-company-derived filename.
 
 ## Launch decision
 
 Current decision: `PRE-LAUNCH`.
 
-Commercial Voucher already has the correct product architecture and most of the EVO-proven operating surface, but it must not be declared commercially ready until the remaining PENDING end-to-end, security, recovery and legacy-cleanup checks pass.
+Commercial Voucher already has the correct product architecture and most of the EVO-proven operating surface. Remaining blockers are end-to-end account/workflow validation, authorization/RLS verification, public-device verification, final deep legacy audit, and backup/restore rehearsal.
 
 ## Release rule
 
