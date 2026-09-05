@@ -20,79 +20,7 @@
     ['FREE GLASSES', 'SPECIAL VOUCHER']
   ];
 
-  function installCommercialThemeApiAlias() {
-    if (window.CommercialVoucherThemes) return true;
-    if (window.EOVoucherThemes) {
-      window.CommercialVoucherThemes = window.EOVoucherThemes;
-      return true;
-    }
-    return false;
-  }
 
-  function watchCommercialThemeApi() {
-    if (installCommercialThemeApiAlias()) return;
-    let attempts = 0;
-    const timer = setInterval(() => {
-      attempts += 1;
-      if (installCommercialThemeApiAlias() || attempts >= 80) clearInterval(timer);
-    }, 100);
-  }
-
-  function installPartnerBranchCutover() {
-    if (!/\/partner(?:-launch|-install)?\.html$/i.test(location.pathname) && !/\/partner\.html$/i.test(location.pathname)) return;
-    if (window.__commercialPartnerBranchCutoverInstalled) return;
-
-    const tryInstall = () => {
-      if (typeof window.loadBranchDirectory !== 'function' || typeof window.redemptionCodesFor !== 'function' || typeof window.outletSummaryFor !== 'function') return false;
-
-      window.loadBranchDirectory = async function() {
-        const extendedFields = 'id,branch_code,branch_name,status,address_line1,address_line2,city,state,postcode,country,phone,whatsapp,map_url';
-        let result = await db.from('branches').select(extendedFields).eq('status', 'active');
-        if (result.error) {
-          result = await db.from('branches').select('id,branch_code,branch_name,status').eq('status', 'active');
-        }
-        if (result.error) return;
-
-        branchDirectory = {};
-        (result.data || []).forEach(b => {
-          const addressParts = [b.address_line1, b.address_line2, b.postcode, b.city, b.state, b.country]
-            .map(v => String(v || '').trim())
-            .filter(Boolean);
-          branchDirectory[b.branch_code] = {
-            name: cleanOutletName(b.branch_name || b.branch_code),
-            address: addressParts.join(', '),
-            phone: String(b.phone || '').trim(),
-            whatsapp: String(b.whatsapp || '').trim(),
-            map_url: String(b.map_url || '').trim()
-          };
-        });
-      };
-
-      window.redemptionCodesFor = function(o) {
-        if (!o) return [];
-        const versionCodes = o.version_branch_codes || [];
-        if (partnerClaimAll && o.all_branches) return Object.keys(branchDirectory);
-        if (partnerClaimAll && !o.all_branches) return versionCodes.filter(c => !!branchDirectory[c]);
-        if (!partnerClaimAll && o.all_branches) return partnerClaimCodes.filter(c => !!branchDirectory[c]);
-        return partnerClaimCodes.filter(c => versionCodes.includes(c) && !!branchDirectory[c]);
-      };
-
-      window.outletSummaryFor = function(o) {
-        const codes = window.redemptionCodesFor(o);
-        return { details: codes.map(c => branchDirectory[c]).filter(Boolean) };
-      };
-
-      window.__commercialPartnerBranchCutoverInstalled = true;
-      return true;
-    };
-
-    if (tryInstall()) return;
-    let attempts = 0;
-    const timer = setInterval(() => {
-      attempts += 1;
-      if (tryInstall() || attempts >= 80) clearInterval(timer);
-    }, 100);
-  }
 
   function fromRow(row = {}) {
     return {
@@ -173,8 +101,6 @@
     apply(next);
     installExportGuard(next);
     installLegacyVisibleGuard();
-    watchCommercialThemeApi();
-    installPartnerBranchCutover();
     window.dispatchEvent(new CustomEvent('commercial-company-profile-changed', { detail: next }));
 
     const dbClient = getDb();
@@ -288,8 +214,6 @@
     apply(DEFAULTS);
     installExportGuard(DEFAULTS);
     installLegacyVisibleGuard();
-    watchCommercialThemeApi();
-    installPartnerBranchCutover();
     const dbClient = getDb();
     if (!dbClient) return;
     try { await dbClient.from('company_profile').upsert(toRow(DEFAULTS), { onConflict: 'id' }); } catch (_) {}
@@ -307,9 +231,7 @@
     reset,
     slugifyCompanyName,
     commercialExportFilename,
-    scrubLegacyVisibleText,
-    installCommercialThemeApiAlias,
-    installPartnerBranchCutover
+    scrubLegacyVisibleText
   };
 
   const boot = async () => {
@@ -317,8 +239,6 @@
     apply(profile);
     installExportGuard(profile);
     installLegacyVisibleGuard();
-    watchCommercialThemeApi();
-    installPartnerBranchCutover();
     await load();
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
