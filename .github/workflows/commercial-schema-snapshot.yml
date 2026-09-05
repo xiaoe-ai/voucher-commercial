@@ -2,6 +2,9 @@ name: Commercial Schema Snapshot V1
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/schema-snapshot-trigger'
 
 permissions:
   contents: read
