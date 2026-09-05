@@ -1,0 +1,46 @@
+name: Commercial Phase 2F Trigger Binding Inspect
+
+on:
+  push:
+    paths:
+      - '.github/commercial-phase2f-trigger-binding-inspect-trigger'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: hukihbcyyqhanaqrizvm
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.hukihbcyyqhanaqrizvm
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      INSPECT_PATH: supabase/migrations/20260905125000_phase2f_trigger_binding_inspect.sql
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard exact Commercial route
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = 'hukihbcyyqhanaqrizvm'
+          test "$PGHOST" = 'aws-0-ap-southeast-1.pooler.supabase.com'
+          test "$PGPORT" = '5432'
+          test "$PGDATABASE" = 'postgres'
+          test "$PGUSER" = 'postgres.hukihbcyyqhanaqrizvm'
+          test -n "${PGPASSWORD:-}"
+          test -f "$INSPECT_PATH"
+      - name: Inspect trigger binding read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'BEGIN;'
+            echo 'SET TRANSACTION READ ONLY;'
+            cat "$INSPECT_PATH"
+            echo 'ROLLBACK;'
+          } | psql -v ON_ERROR_STOP=1
