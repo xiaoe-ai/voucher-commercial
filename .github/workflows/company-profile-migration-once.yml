@@ -15,10 +15,10 @@ jobs:
       PROJECT_REF: hukihbcyyqhanaqrizvm
       MIGRATION_FILE: supabase/migrations/20260905053000_company_profile.sql
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      PGHOST: db.hukihbcyyqhanaqrizvm.supabase.co
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
       PGPORT: '5432'
       PGDATABASE: postgres
-      PGUSER: postgres
+      PGUSER: postgres.hukihbcyyqhanaqrizvm
       PGSSLMODE: require
       PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
     steps:
@@ -44,7 +44,7 @@ jobs:
           fi
           echo 'Registered migration guard passed.'
 
-      - name: Verify direct Commercial database connection
+      - name: Verify Commercial session pooler connection
         shell: bash
         run: |
           psql -v ON_ERROR_STOP=1 -Atqc "select current_database(), current_user;"
