@@ -1,0 +1,105 @@
+name: Commercial Brand Runtime Cleanup
+
+on:
+  push:
+    paths:
+      - '.github/commercial-brand-runtime-cleanup-trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove obsolete runtime compatibility shims
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('commercial-brand.js')
+          s = path.read_text()
+
+          if 'function installCommercialThemeApiAlias()' not in s:
+              raise SystemExit('theme alias function not found')
+          if 'function installPartnerBranchCutover()' not in s:
+              raise SystemExit('branch cutover function not found')
+
+          s, n1 = re.subn(
+              r"\n  function installCommercialThemeApiAlias\(\) \{.*?\n  \}\n\n  function watchCommercialThemeApi\(\) \{.*?\n  \}\n",
+              '\n', s, count=1, flags=re.S
+          )
+          if n1 != 1:
+              raise SystemExit('failed to remove theme alias/watch block')
+
+          s, n2 = re.subn(
+              r"\n  function installPartnerBranchCutover\(\) \{.*?\n  \}\n\n  function fromRow",
+              '\n\n  function fromRow', s, count=1, flags=re.S
+          )
+          if n2 != 1:
+              raise SystemExit('failed to remove branch cutover block')
+
+          for old in [
+              '    watchCommercialThemeApi();\n',
+              '    installPartnerBranchCutover();\n',
+          ]:
+              s = s.replace(old, '')
+
+          s = s.replace(',\n    installCommercialThemeApiAlias,\n    installPartnerBranchCutover\n', '\n')
+
+          forbidden = [
+              'EOVoucherThemes',
+              'installCommercialThemeApiAlias',
+              'watchCommercialThemeApi',
+              'installPartnerBranchCutover',
+              '__commercialPartnerBranchCutoverInstalled'
+          ]
+          remains = [x for x in forbidden if x in s]
+          if remains:
+              raise SystemExit(f'obsolete runtime shim remains: {remains}')
+
+          required = [
+              'LEGACY_VISIBLE_REPLACEMENTS',
+              'installLegacyVisibleGuard',
+              'CommercialCompanyProfile',
+              'commercialExportFilename'
+          ]
+          missing = [x for x in required if x not in s]
+          if missing:
+              raise SystemExit(f'expected safety/runtime feature missing: {missing}')
+
+          path.write_text(s)
+          PY
+
+      - name: Static assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ! grep -q 'EOVoucherThemes' commercial-brand.js
+          ! grep -q 'installPartnerBranchCutover' commercial-brand.js
+          ! grep -q 'watchCommercialThemeApi' commercial-brand.js
+          grep -q 'LEGACY_VISIBLE_REPLACEMENTS' commercial-brand.js
+          grep -q 'installLegacyVisibleGuard' commercial-brand.js
+          git diff -- commercial-brand.js
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- commercial-brand.js; then
+            echo 'No runtime cleanup changes required.'
+            exit 0
+          fi
+          git config user.name 'Xiao-E-26'
+          git config user.email 'xiaoeai2026@gmail.com'
+          git add commercial-brand.js
+          git commit -m 'Remove obsolete Commercial frontend compatibility shims'
+          git push origin HEAD:main
