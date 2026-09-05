@@ -1,4 +1,4 @@
-const CACHE_NAME = 'commercial-voucher-app-shell-v3';
+const CACHE_NAME = 'commercial-voucher-app-shell-v4';
 
 const STATIC_ASSETS = [
   './offline.html',
