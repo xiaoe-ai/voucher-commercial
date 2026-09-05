@@ -1,0 +1,74 @@
+name: Commercial Neutralization Phase 1 Dry Run
+
+on:
+  push:
+    paths:
+      - '.github/commercial-neutralization-phase1-trigger'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-neutralization-phase1-dryrun
+  cancel-in-progress: false
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: hukihbcyyqhanaqrizvm
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.hukihbcyyqhanaqrizvm
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      MIGRATION_PATH: supabase/migrations/20260905101000_commercial_neutralization_phase1.sql
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard exact Commercial route and migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = 'hukihbcyyqhanaqrizvm'
+          test "$PGHOST" = 'aws-0-ap-southeast-1.pooler.supabase.com'
+          test "$PGPORT" = '5432'
+          test "$PGDATABASE" = 'postgres'
+          test "$PGUSER" = 'postgres.hukihbcyyqhanaqrizvm'
+          test -n "${PGPASSWORD:-}"
+          test "$MIGRATION_PATH" = 'supabase/migrations/20260905101000_commercial_neutralization_phase1.sql'
+          test -f "$MIGRATION_PATH"
+          sha256sum "$MIGRATION_PATH"
+          echo 'Commercial Phase 1 dry-run route lock passed.'
+
+      - name: Verify live connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(psql -v ON_ERROR_STOP=1 -Atqc "select current_database() || '|' || current_user;")
+          echo "Connected as: $result"
+          test "$result" = 'postgres|postgres'
+
+      - name: Execute migration and rollback in one session
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'BEGIN;'
+            cat "$MIGRATION_PATH"
+            echo 'ROLLBACK;'
+          } | psql -v ON_ERROR_STOP=1
+          echo 'Phase 1 dry-run completed and rolled back.'
+
+      - name: Verify rollback preserved current live state
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_value=$(psql -v ON_ERROR_STOP=1 -Atqc "select column_default from information_schema.columns where table_schema='public' and table_name='vouchers' and column_name='voucher_type';")
+          echo "voucher_type default after rollback: $default_value"
+          test -n "$default_value"
+          auth_grant=$(psql -v ON_ERROR_STOP=1 -Atqc "select count(*) from information_schema.role_routine_grants where routine_schema='public' and routine_name='is_trusted_service_role' and grantee='authenticated' and privilege_type='EXECUTE';")
+          echo "authenticated execute grants after rollback: $auth_grant"
+          test "$auth_grant" -ge 1
