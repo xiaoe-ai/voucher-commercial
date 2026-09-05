@@ -1,0 +1,125 @@
+name: Commercial Migration Channel V1
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_path:
+        description: 'Exact SQL migration path under supabase/migrations/'
+        required: true
+        type: string
+      mode:
+        description: 'Dry-run only, or apply transactionally'
+        required: true
+        default: dry_run
+        type: choice
+        options:
+          - dry_run
+          - apply
+      confirmation:
+        description: 'For apply only, enter APPLY-COMMERCIAL-HUKIH'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-migration-channel-v1
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_REF: hukihbcyyqhanaqrizvm
+      PGHOST: aws-0-ap-southeast-1.pooler.supabase.com
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres.hukihbcyyqhanaqrizvm
+      PGSSLMODE: require
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      MIGRATION_PATH: ${{ inputs.migration_path }}
+      MODE: ${{ inputs.mode }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard Commercial route and required secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PROJECT_REF" = 'hukihbcyyqhanaqrizvm'
+          test "$PGHOST" = 'aws-0-ap-southeast-1.pooler.supabase.com'
+          test "$PGPORT" = '5432'
+          test "$PGDATABASE" = 'postgres'
+          test "$PGUSER" = 'postgres.hukihbcyyqhanaqrizvm'
+          if [ -z "${PGPASSWORD:-}" ]; then
+            echo 'MISSING: SUPABASE_DB_PASSWORD'
+            exit 2
+          fi
+          echo 'Commercial route lock and DB secret guard passed.'
+
+      - name: Validate migration path
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$MIGRATION_PATH" in
+            supabase/migrations/*.sql) ;;
+            *) echo 'Migration must be an exact .sql file under supabase/migrations/'; exit 3 ;;
+          esac
+          if [[ "$MIGRATION_PATH" == *'..'* ]]; then
+            echo 'Parent traversal is not allowed.'
+            exit 4
+          fi
+          test -f "$MIGRATION_PATH"
+          echo "Migration file: $MIGRATION_PATH"
+          sha256sum "$MIGRATION_PATH"
+
+      - name: Verify Commercial Session Pooler connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=$(psql -v ON_ERROR_STOP=1 -Atqc "select current_database() || '|' || current_user;")
+          echo "Connected as: $result"
+          test "$result" = 'postgres|postgres'
+
+      - name: Transactional dry-run with rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'BEGIN;'
+            cat "$MIGRATION_PATH"
+            echo 'ROLLBACK;'
+          } | psql -v ON_ERROR_STOP=1
+          echo 'Dry-run completed and rolled back.'
+
+      - name: Apply confirmation guard
+        if: ${{ inputs.mode == 'apply' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRMATION" != 'APPLY-COMMERCIAL-HUKIH' ]; then
+            echo 'Apply confirmation mismatch. No database changes made.'
+            exit 5
+          fi
+          echo 'Explicit apply confirmation accepted.'
+
+      - name: Apply migration transactionally
+        if: ${{ inputs.mode == 'apply' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'BEGIN;'
+            cat "$MIGRATION_PATH"
+            echo 'COMMIT;'
+          } | psql -v ON_ERROR_STOP=1
+          echo 'Migration committed to Commercial DB.'
+
+      - name: Final connection check
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -Atqc "select now(), current_database(), current_user;"
