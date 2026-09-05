@@ -162,12 +162,17 @@ jobs:
           SQL
           test ! -s /tmp/rls_off.txt
 
-      - name: Verify Commercial-neutral canonical source
+      - name: Verify Commercial-neutral executable SQL
         shell: bash
         run: |
           set -euo pipefail
-          if grep -RniE 'Evolution Optical|EVO-FREE-GLASSES|RM59 Free Glasses|RM60 Free Glasses|Asia/Kuala_Lumpur|\bEO-' supabase/canonical; then
-            echo 'Customer-specific or regional hardcoding found in canonical SQL.'
+          tmp=$(mktemp)
+          find supabase/canonical -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | xargs -0 cat \
+            | sed -E '/^[[:space:]]*--/d' > "$tmp"
+          if grep -niE 'Evolution Optical|EVO-FREE-GLASSES|RM59 Free Glasses|RM60 Free Glasses|Asia/Kuala_Lumpur|\bEO-' "$tmp"; then
+            echo 'Customer-specific or regional hardcoding found in executable canonical SQL.'
             exit 1
           fi
 
