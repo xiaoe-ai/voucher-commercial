@@ -133,6 +133,12 @@ jobs:
           docker cp /tmp/commercial-recovery.dump "$cid:/tmp/commercial-recovery.dump"
           docker exec "$cid" pg_restore -U postgres -d commercial_recovery --no-owner --no-acl --exit-on-error /tmp/commercial-recovery.dump
 
+      - name: Reapply canonical grants after restore
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -d commercial_recovery -v ON_ERROR_STOP=1 -f supabase/canonical/004_privileges_grants.sql
+
       - name: Verify restored schema functions RLS and business data
         shell: bash
         run: |
@@ -217,6 +223,7 @@ jobs:
           echo 'COMMERCIAL_DB_BACKUP_RESTORE_OK=true'
           echo 'RESTORE_TARGET=blank_isolated_postgresql17'
           echo 'SCHEMA_FUNCTION_RLS_OK=true'
+          echo 'CANONICAL_GRANTS_REAPPLIED=true'
           echo 'BUSINESS_FIXTURE_COUNTS_OK=true'
           echo 'AUTHORIZATION_AFTER_RESTORE_OK=true'
           echo 'LEGACY_CUSTOMER_SEED_ABSENT=true'
