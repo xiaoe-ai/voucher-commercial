@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "project_key": "voucher_commercial",
+  "status": "ACTIVE",
+  "owner_orchestrator": "Xiao-E",
+  "github": {
+    "repository": "xiaoe-ai/voucher-commercial",
+    "default_branch": "main"
+  },
+  "supabase": {
+    "project_ref": "hukihbcyyqhanaqrizvm",
+    "management_mode": "controlled_external_bridge",
+    "bridge_target": "commercial",
+    "remote_function": "xiaoe-voucher-bridge",
+    "allowed_actions": ["health", "read", "insert", "update", "upsert", "delete", "rpc"]
+  },
+  "routing": {
+    "hard_route_lock": true,
+    "cross_project_fallback": false,
+    "native_connector_account_switch_required": false,
+    "deny_targets": ["production", "stage", "daughter", "xiaoe-core"],
+    "rule": "Commercial Voucher operations must resolve to target=commercial and project_ref=hukihbcyyqhanaqrizvm before execution. Never fall back to another Supabase project or require the owner to switch Supabase accounts when the Xiao-E external bridge is healthy."
+  },
+  "secrets": {
+    "store_values_here": false,
+    "credential_reference": "XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN"
+  },
+  "verified_on": "2026-09-05"
+}
