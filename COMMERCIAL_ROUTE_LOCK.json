@@ -1,8 +1,16 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "project_key": "voucher_commercial",
   "status": "ACTIVE",
   "owner_orchestrator": "Xiao-E",
+  "identity_source": {
+    "mode": "project-local",
+    "github_core": "docs/xiaoe/XIAOE_PORTABLE_CORE.md",
+    "github_manifest": "docs/xiaoe/PORTABLE_MANIFEST.json",
+    "supabase_registry_table": "public.xiaoe_project_governance",
+    "project_ref": "hukihbcyyqhanaqrizvm",
+    "rule": "XiaoE identity, constitution and local governance state belong to Commercial Voucher itself. External bridge infrastructure is transport only and must never be treated as XiaoE identity or source of truth."
+  },
   "github": {
     "repository": "xiaoe-ai/voucher-commercial",
     "default_branch": "main"
@@ -17,6 +25,7 @@
   },
   "runtime_mode": {
     "management_mode": "controlled_external_bridge",
+    "transport_only": true,
     "bridge_target": "commercial",
     "remote_function": "xiaoe-voucher-bridge",
     "allowed_actions": ["health", "read", "insert", "update", "upsert", "delete", "rpc"],
@@ -24,7 +33,8 @@
     "invoke_gateway": "commercial-invoke-gateway",
     "bridge_function": "external-supabase-bridge",
     "gateway_url": "https://pgdnwjgfxpaszazuofns.supabase.co/functions/v1/commercial-invoke-gateway",
-    "auth_header": "X-XiaoE-Runtime-Key"
+    "auth_header": "X-XiaoE-Runtime-Key",
+    "failure_rule": "If transport is unavailable, mark bridge health BLOCKED/DEGRADED; do not mark XiaoE identity missing and do not reroute to another project."
   },
   "migration_mode": {
     "management_mode": "manual_migration_channel",
@@ -43,7 +53,16 @@
     "cross_project_fallback": false,
     "native_connector_account_switch_required": false,
     "deny_targets": ["production", "stage", "daughter", "xiaoe-core"],
-    "rule": "All Commercial Voucher work resolves to one Commercial Main Channel locked to project_ref=hukihbcyyqhanaqrizvm. Runtime tasks use the Commercial runtime bridge. Explicit migration tasks use the Commercial manual migration workflow. The two modes share one logical Commercial route but retain separate credentials and safety controls."
+    "rule": "All Commercial Voucher work resolves to one Commercial Main Channel locked to project_ref=hukihbcyyqhanaqrizvm. Runtime tasks may use the Commercial runtime bridge as transport. Explicit migration tasks use the Commercial manual migration workflow. Neither mode may silently switch project identity or target."
+  },
+  "stability": {
+    "fact_first": true,
+    "read_before_write": true,
+    "same_direction_failure_limit": 2,
+    "cross_project_fallback": false,
+    "local_identity_survives_transport_failure": true,
+    "business_flow_protection": "Admin -> Partner -> Voucher -> Staff verify/redeem",
+    "completion_requires_reverify": true
   },
   "secrets": {
     "store_values_here": false,
@@ -51,5 +70,5 @@
     "runtime_key_reference": "X-XiaoE-Runtime-Key",
     "migration_credential_reference": "SUPABASE_DB_PASSWORD"
   },
-  "verified_on": "2026-09-05"
+  "verified_on": "2026-09-06"
 }
