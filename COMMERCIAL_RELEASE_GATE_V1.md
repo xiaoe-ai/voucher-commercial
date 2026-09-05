@@ -10,7 +10,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 - [PASS] Canonical Supabase project ref is `hukihbcyyqhanaqrizvm`.
 - [PASS] Product is defined as generic white-label Commercial Voucher.
 - [PASS] Company Profile layer exists (`company-setup.html`, `commercial-brand.js`).
-- [PASS] User-visible Excel export naming is guarded by the white-label runtime and derives from customer company name rather than EVO/Evolution branding.
+- [PASS] User-visible Excel export naming is guarded by the white-label runtime and derives from the latest customer company name rather than EVO/Evolution branding, including company-name changes made during the same browser session.
 - [PENDING] Complete final deep legacy-string audit for non-user-facing technical identifiers and any remaining generated outputs.
 
 ## B. Customer onboarding
@@ -71,7 +71,7 @@ This file is the canonical launch checklist for Commercial Voucher. A release is
 
 - Commercial bridge health log: four consecutive `ok=true`, upstream HTTP 200 checks after bridge token configuration was corrected.
 - `manifest-admin.json`, `manifest-partner.json`, `manifest-staff.json` structurally verified.
-- `commercial-brand.js` hardened so legacy `evolution-vouchers-*` or generic Commercial export filenames are replaced at runtime with a customer-company-derived filename.
+- `commercial-brand.js` hardens legacy export naming and resolves the filename from the latest local Company Profile at export time, so same-session company-name changes are reflected without page reload.
 - `commercial-brand.js` exposes `CommercialVoucherThemes` as the Commercial-neutral compatibility API while existing `EOVoucherThemes` callers remain operational during migration.
 - Admin / Partner / Staff install entry pages load `commercial-brand.js` and render Company Profile names.
 - Admin / Partner / Staff launch splash screens load `commercial-brand.js` and render Company Profile names.
