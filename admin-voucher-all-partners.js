@@ -7,25 +7,30 @@
     const status = document.getElementById('voucherStatus');
     const dateFrom = document.getElementById('voucherDateFrom');
     const dateTo = document.getElementById('voucherDateTo');
-    const exportBtn = document.getElementById('exportVoucherExcel');
-    const clearBtn = document.getElementById('clearVoucherFilters');
-    if (!partnerSelect || !search || !status || !dateFrom || !dateTo || !exportBtn || !clearBtn) return false;
+    if (!partnerSelect || !search || !status || !dateFrom || !dateTo) return false;
+    if (window.__commercialVoucherAllPartnersInstalled) return true;
+    window.__commercialVoucherAllPartnersInstalled = true;
 
-    if (![...partnerSelect.options].some(o => o.value === 'ALL')) {
-      const opt = document.createElement('option');
-      opt.value = 'ALL';
-      opt.textContent = 'All Partners';
-      partnerSelect.insertBefore(opt, partnerSelect.firstChild);
-    }
-    if (partnerSelect.value === 'SELECT') partnerSelect.value = 'ALL';
+    const ensureAllOption = () => {
+      const hadAll = [...partnerSelect.options].some(o => o.value === 'ALL');
+      if (!hadAll) {
+        const opt = document.createElement('option');
+        opt.value = 'ALL';
+        opt.textContent = 'All Partners';
+        partnerSelect.insertBefore(opt, partnerSelect.firstChild);
+      }
+      if (!partnerSelect.value || partnerSelect.value === 'SELECT') partnerSelect.value = 'ALL';
+    };
 
-    const filtered = () => {
+    ensureAllOption();
+
+    const filteredAllPartners = () => {
       const q = String(search.value || '').toLowerCase();
       const sf = status.value;
       const pf = partnerSelect.value || 'ALL';
       const df = dateFrom.value;
       const dt = dateTo.value;
-      const rows = typeof window.visibleVoucherRecords === 'function' ? window.visibleVoucherRecords() : (window.vouchers || []);
+      const rows = typeof window.visibleVoucherRecords === 'function' ? window.visibleVoucherRecords() : [];
       return rows.filter(v => {
         const st = window.voucherEffectiveStatus(v);
         const hay = [v.voucher_code, v.customer_name, v.customer_phone, window.partnerNameFor(v), v.voucher_type, window.engineLabel(v)].join(' ').toLowerCase();
@@ -39,75 +44,36 @@
       });
     };
 
-    const render = () => {
-      const list = filtered();
-      const c = { VALID: 0, REDEEMED: 0, EXPIRED: 0 };
-      list.forEach(v => { c[window.voucherEffectiveStatus(v)] = (c[window.voucherEffectiveStatus(v)] || 0) + 1; });
-      document.getElementById('vTotal').textContent = list.length;
-      document.getElementById('vValid').textContent = c.VALID || 0;
-      document.getElementById('vRedeemed').textContent = c.REDEEMED || 0;
-      document.getElementById('vExpired').textContent = c.EXPIRED || 0;
-      const box = document.getElementById('voucherRecords');
-      box.innerHTML = list.length ? list.map(v => {
-        const st = window.voucherEffectiveStatus(v);
-        return `<div class="vrecord"><div class="vtop"><div style="flex:1"><div class="vcode">${window.esc(v.voucher_code || v.id)}</div><div class="pcode">${window.esc(window.engineLabel(v))}</div></div><span class="vstatus ${st.toLowerCase()}">${st}</span></div><div class="vmeta"><b>Customer:</b> ${window.esc(v.customer_name || '—')}<br><b>Partner:</b> ${window.esc(window.partnerNameFor(v))}<br><b>Type:</b> ${window.esc(window.engineLabel(v))}<br><b>Valid Until:</b> ${window.esc(v.expiry_date || '—')}<br><b>Redeem at:</b> ${window.esc(window.branchLabel(v))}${v.redeemed_at ? `<br><b>Redeemed At:</b> ${window.esc(new Date(v.redeemed_at).toLocaleString(navigator.language || 'en-US'))}` : ''}</div></div>`;
-      }).join('') : '<p class="sub">No voucher records found.</p>';
-    };
+    // Replace only the filtering rule. The original Admin render/export functions
+    // remain in charge so workbook columns and existing UI behavior stay canonical.
+    window.filteredVouchers = filteredAllPartners;
 
-    const exportExcel = () => {
-      const list = filtered();
-      if (!list.length) {
-        if (typeof window.msg === 'function') window.msg(document.getElementById('voucherMsg'), 'No records to export.');
-        return;
+    const observer = new MutationObserver(() => {
+      const before = partnerSelect.value;
+      ensureAllOption();
+      if ((before === '' || before === 'SELECT') && typeof window.renderVouchers === 'function') {
+        window.renderVouchers();
       }
-      if (typeof XLSX === 'undefined') {
-        if (typeof window.msg === 'function') window.msg(document.getElementById('voucherMsg'), 'Excel exporter failed to load.');
-        return;
-      }
-      const rows = list.map(v => {
-        const ver = (window.voucherVersions || []).find(x => x.id === v.version_id);
-        const tmp = ver && (window.voucherTemplates || []).find(x => x.id === ver.template_id);
-        return {
-          'Voucher Code': v.voucher_code || '',
-          'Status': window.voucherEffectiveStatus(v),
-          'Customer': v.customer_name || '',
-          'Phone': v.customer_phone || '',
-          'Partner': window.partnerNameFor(v),
-          'Voucher Type': window.engineLabel(v),
-          'Template Code': tmp?.template_code || '',
-          'Version': ver ? `V${ver.version_no} ${ver.version_name || ''}` : '',
-          'Valid Until': v.expiry_date || '',
-          'Redeem At': window.branchLabel(v),
-          'Issued At': v.issued_at || '',
-          'Redeemed At': v.redeemed_at || ''
-        };
+    });
+    observer.observe(partnerSelect, { childList: true });
+
+    partnerSelect.addEventListener('change', () => {
+      ensureAllOption();
+      if (typeof window.renderVouchers === 'function') window.renderVouchers();
+    });
+
+    const clearBtn = document.getElementById('clearVoucherFilters');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        setTimeout(() => {
+          ensureAllOption();
+          partnerSelect.value = 'ALL';
+          if (typeof window.renderVouchers === 'function') window.renderVouchers();
+        }, 0);
       });
-      const ws = XLSX.utils.json_to_sheet(rows);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Voucher Records');
-      XLSX.writeFile(wb, `commercial-vouchers-${new Date().toISOString().slice(0,10)}.xlsx`);
-    };
+    }
 
-    window.filteredVouchers = filtered;
-    window.renderVouchers = render;
-    window.exportVoucherExcel = exportExcel;
-
-    partnerSelect.onchange = render;
-    search.oninput = render;
-    status.onchange = render;
-    dateFrom.onchange = render;
-    dateTo.onchange = render;
-    exportBtn.onclick = exportExcel;
-    clearBtn.onclick = () => {
-      search.value = '';
-      status.value = 'ALL';
-      partnerSelect.value = 'ALL';
-      dateFrom.value = '';
-      dateTo.value = '';
-      render();
-    };
-
-    render();
+    if (typeof window.renderVouchers === 'function') window.renderVouchers();
     return true;
   }
 
