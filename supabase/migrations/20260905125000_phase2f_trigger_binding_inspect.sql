@@ -11,4 +11,5 @@ join pg_namespace n on n.oid=c.relnamespace
 join pg_proc p on p.oid=t.tgfoid
 where not t.tgisinternal
   and n.nspname='public'
- 
+  and p.proname='sync_single_voucher_partner_engine'
+order by c.relname, t.tgname;
