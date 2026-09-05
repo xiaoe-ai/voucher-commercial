@@ -14,6 +14,7 @@ This manifest records the backend surface required by the current Commercial Vou
 - `company_profile`
 - `partners`
 - `partner_users`
+- `staff_users`
 - `branches`
 - `vouchers`
 - `voucher_branches`
@@ -24,6 +25,12 @@ This manifest records the backend surface required by the current Commercial Vou
 - `redemptions`
 
 All table schema, constraints, indexes, grants and RLS policies required by these surfaces must be captured into canonical migrations before `COMMERCIAL_READY`.
+
+### Important Staff dependency correction
+
+`staff.html` uses `staff_users` for Staff authorization / branch-scoped identity and redemption-history lookups. This table is distinct from the Partner portal's `partner_users` usage and must not be omitted from a rebuild.
+
+A blank Commercial rebuild is considered incomplete if `staff_users` schema, relationships, grants and RLS are missing even when `partner_users` exists.
 
 ## RPC / database functions observed
 
@@ -77,16 +84,19 @@ Never commit secret values.
 - Supabase Auth session
 - Partner role and dashboard resolved by `get_my_partner_dashboard`
 - Partner staff permissions constrained by partner staff access controls and allocation scope
+- Partner portal uses `partner_users` for partner-admin / partner-staff management state
 
 ### Staff
 - Supabase Auth session
+- `staff_users` supplies Staff identity / branch-scoped authorization state used by the Staff portal
 - Branch-restricted voucher verification and redemption
 - Redemption controlled by `verify_voucher` and `redeem_voucher`
+- `create-staff` is part of the Staff account provisioning path
 
 ## Rebuild order
 
 1. Base extensions / enums if any
-2. Core tables and foreign keys
+2. Core tables and foreign keys, including both `partner_users` and `staff_users`
 3. Indexes / constraints
 4. RLS enablement
 5. RLS policies / grants
@@ -100,29 +110,42 @@ Never commit secret values.
 
 ## Release blockers discovered during dependency extraction
 
-### 1. Partner Portal contains customer-specific outlet data
+### 1. Partner Portal contains customer-specific outlet data in source
 
-Current `partner.html` contains hard-coded outlet names, addresses and phone numbers belonging to the EVO / Evolution Optical operating footprint, including The Mines, Damai Perdana, Bangi, Bahau, Semenyih Vista Valley, Semenyih Eco Taipan and Pertama Complex.
+Current `partner.html` still physically contains hard-coded outlet names, addresses and phone numbers belonging to the EVO / Evolution Optical operating footprint, including The Mines, Damai Perdana, Bangi, Bahau, Semenyih Vista Valley, Semenyih Eco Taipan and Pertama Complex.
 
-This violates Commercial white-label requirements.
+Runtime behavior has been cut over through the Commercial white-label runtime so the active Partner branch directory, all-branch selection and redemption-location resolution use Commercial `branches` data instead of the legacy `OUTLETS` map. The source constants still require physical removal before the final legacy audit is marked PASS.
 
-Required fix:
-- remove all customer-specific outlet constants from canonical frontend code
-- load redemption locations from Commercial Supabase application data
-- if address / phone fields are required, add them to canonical branch/location schema rather than keeping frontend constants
+Required final fix:
+- remove all customer-specific outlet constants from canonical frontend source
+- retain Commercial `branches` as the only branch source of truth
+- apply / verify canonical branch contact fields where address and phone are needed
 
-### 2. Staff Portal contains EVO-style voucher placeholder
+### 2. Staff Portal contains EVO-style voucher placeholder in source
 
-Current `staff.html` includes the user-visible placeholder `EO-20260808-XXXXXXX`.
+Current `staff.html` physically includes the user-visible placeholder `EO-20260808-XXXXXXX`.
 
-Required fix:
-- replace with generic placeholder such as `VCH-20260905-XXXXXXX` or `Enter voucher code`
-- voucher code generation rules must be customer-neutral unless explicitly configured by customer data
+The Commercial runtime guard converts that placeholder to `Enter voucher code` at runtime, but physical source cleanup is still required before final legacy audit PASS.
+
+Required final fix:
+- replace source placeholder with `Enter voucher code`
+- voucher code presentation must remain customer-neutral unless explicitly configured by customer data
+
+### 3. Backend canonical source is not yet complete
+
+The repository currently does not yet contain verified canonical definitions for every live business table, RLS policy, RPC and Edge Function listed in this manifest.
+
+Required final fix:
+- extract / reconstruct the live Commercial backend definitions without copying EVO Production state
+- place schema / RLS / RPC definitions in canonical migrations
+- place Edge Function source in canonical repository paths
+- prove rebuild on an isolated blank target
 
 ## Canonicalization completion criteria
 
 Backend canonicalization is complete only when:
 - every dependency in this manifest exists in canonical source
+- both `partner_users` and `staff_users` authorization surfaces are represented
 - an isolated blank target can be rebuilt without copying EVO Production state
 - Admin / Partner / Staff authorization is verified
 - issue -> QR -> verify -> redeem passes end to end
