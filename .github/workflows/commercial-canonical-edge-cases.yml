@@ -1,0 +1,265 @@
+name: Commercial Canonical Edge Cases E2E
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'supabase/canonical/**'
+      - '.github/workflows/commercial-canonical-edge-cases.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  edge-cases:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap Supabase auth shim
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          begin
+            if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
+            if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+            if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
+          end $$;
+          create schema if not exists auth;
+          create table auth.users(id uuid primary key, email text, created_at timestamptz not null default now());
+          create or replace function auth.uid() returns uuid language sql stable as $$
+            select nullif(current_setting('request.jwt.claim.sub', true),'')::uuid
+          $$;
+          create or replace function auth.jwt() returns jsonb language sql stable as $$
+            select coalesce(nullif(current_setting('request.jwt.claims', true),'')::jsonb,'{}'::jsonb)
+          $$;
+          grant usage on schema auth to anon, authenticated, service_role;
+          grant execute on function auth.uid() to anon, authenticated, service_role;
+          grant execute on function auth.jwt() to anon, authenticated, service_role;
+          grant select on auth.users to service_role;
+          SQL
+
+      - name: Apply canonical SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in $(find supabase/canonical -maxdepth 1 -type f -name '*.sql' | sort); do
+            psql -v ON_ERROR_STOP=1 -f "$f"
+          done
+          echo 'CANONICAL_SQL_OK=true'
+
+      - name: Seed isolated fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          insert into auth.users(id,email) values
+            ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','admin@example.invalid'),
+            ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','partner@example.invalid'),
+            ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','staff@example.invalid');
+
+          insert into public.partners(id,partner_code,partner_name,status,staff_limit,staff_access_enabled) values
+            ('10000000-0000-4000-8000-000000000001','ADMIN','Commercial Voucher Admin','active',10,true),
+            ('10000000-0000-4000-8000-000000000002','PA','Partner A','active',10,true);
+
+          insert into public.partner_users(user_id,partner_id,role,status,login_email) values
+            ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','10000000-0000-4000-8000-000000000001','admin','active','admin@example.invalid'),
+            ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','10000000-0000-4000-8000-000000000002','partner_admin','active','partner@example.invalid');
+
+          insert into public.branches(id,branch_code,branch_name,status) values
+            ('20000000-0000-4000-8000-000000000001','BA','Branch A','active');
+
+          insert into public.staff_users(user_id,branch_id,staff_name,role,status) values
+            ('dddddddd-dddd-4ddd-8ddd-dddddddddddd','20000000-0000-4000-8000-000000000001','Staff A','staff','active');
+
+          insert into public.voucher_templates(id,template_code,template_name,voucher_category,status) values
+            ('30000000-0000-4000-8000-000000000001','WELCOME','Welcome Voucher','custom','active');
+
+          insert into public.voucher_versions(
+            id,template_id,version_no,version_name,validity_type,valid_days,status,all_branches,usage_limit
+          ) values (
+            '40000000-0000-4000-8000-000000000001',
+            '30000000-0000-4000-8000-000000000001',1,'V1','days_after_issue',30,'active',true,1
+          );
+
+          update public.voucher_templates
+          set current_version_id='40000000-0000-4000-8000-000000000001'
+          where id='30000000-0000-4000-8000-000000000001';
+
+          insert into public.partner_voucher_access(partner_id,template_id,status,quota_type) values
+            ('10000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000001','active','unlimited');
+
+          insert into public.partner_claim_settings(partner_id,all_branches) values
+            ('10000000-0000-4000-8000-000000000002',true);
+
+          insert into public.partner_voucher_allocations(
+            id,partner_id,version_id,quantity_allocated,quantity_revoked,status,all_branches,created_by
+          ) values (
+            '50000000-0000-4000-8000-000000000001',
+            '10000000-0000-4000-8000-000000000002',
+            '40000000-0000-4000-8000-000000000001',
+            3,0,'active',true,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+          );
+          SQL
+
+      - name: Partner issues active voucher
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          set role authenticated;
+          select set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',false);
+          do $$
+          declare r jsonb;
+          begin
+            r := public.create_partner_multi_voucher_controlled(
+              '40000000-0000-4000-8000-000000000001'::uuid,
+              'Edge Case Customer',
+              '+000000001'
+            );
+            if coalesce((r->>'success')::boolean,false) is not true then raise exception 'Issue failed: %', r; end if;
+          end $$;
+          reset role;
+          SQL
+          psql -Atqc "select voucher_code from public.vouchers where customer_name='Edge Case Customer' limit 1" > /tmp/active_code
+          test -s /tmp/active_code
+          echo 'ACTIVE_VOUCHER_ISSUED=true'
+
+      - name: Verify unissued allocation revoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          do $$
+          declare r jsonb;
+          begin
+            r := public.svc_admin_revoke_unissued_allocation(
+              'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
+              '50000000-0000-4000-8000-000000000001'::uuid,
+              1,
+              'isolated edge-case e2e'
+            );
+            if (r->>'revoked_unissued')::int <> 1 then raise exception 'Unexpected revoke result: %', r; end if;
+            if (r->>'issued_vouchers_untouched')::int <> 1 then raise exception 'Issued count changed: %', r; end if;
+            if (r->>'remaining_unissued')::int <> 1 then raise exception 'Unexpected remaining quantity: %', r; end if;
+          end $$;
+          SQL
+          echo 'UNISSUED_REVOKE_OK=true'
+
+      - name: Verify expired voucher behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          insert into public.vouchers(
+            partner_id,voucher_code,customer_name,voucher_type,activated_at,expiry_date,status,all_branches,
+            issued_by_user_id,issued_by_name,template_id,version_id,allocation_id
+          ) values (
+            '10000000-0000-4000-8000-000000000002','V-EXPIRED-TEST','Expired Customer','Welcome Voucher',
+            now()-interval '10 days',current_date-1,'valid',true,
+            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Partner Admin',
+            '30000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',null
+          );
+
+          set role authenticated;
+          select set_config('request.jwt.claim.sub','dddddddd-dddd-4ddd-8ddd-dddddddddddd',false);
+          do $$
+          declare v jsonb; r jsonb;
+          begin
+            v := public.verify_voucher('V-EXPIRED-TEST');
+            if coalesce((v->>'expired')::boolean,false) is not true then raise exception 'Expired flag missing: %', v; end if;
+            if coalesce((v->>'can_redeem')::boolean,false) is true then raise exception 'Expired voucher marked redeemable: %', v; end if;
+            r := public.redeem_voucher('V-EXPIRED-TEST','expired check');
+            if coalesce((r->>'success')::boolean,false) is true then raise exception 'Expired voucher redeemed: %', r; end if;
+          end $$;
+          reset role;
+          SQL
+          echo 'EXPIRY_ENFORCEMENT_OK=true'
+
+      - name: Verify suspended staff rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=$(cat /tmp/active_code)
+          psql -v ON_ERROR_STOP=1 -v voucher_code="$CODE" <<'SQL'
+          update public.staff_users set status='suspended' where user_id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+          select set_config('app.test_voucher_code', :'voucher_code', false);
+          set role authenticated;
+          select set_config('request.jwt.claim.sub','dddddddd-dddd-4ddd-8ddd-dddddddddddd',false);
+          do $$
+          declare v jsonb;
+          begin
+            v := public.verify_voucher(current_setting('app.test_voucher_code'));
+            if coalesce((v->>'success')::boolean,false) is true then raise exception 'Suspended staff unexpectedly verified: %', v; end if;
+          end $$;
+          reset role;
+          update public.staff_users set status='active' where user_id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+          SQL
+          echo 'SUSPENDED_STAFF_BLOCKED=true'
+
+      - name: Redeem active voucher and verify reporting
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=$(cat /tmp/active_code)
+          psql -v ON_ERROR_STOP=1 -v voucher_code="$CODE" <<'SQL'
+          select set_config('app.test_voucher_code', :'voucher_code', false);
+          set role authenticated;
+          select set_config('request.jwt.claim.sub','dddddddd-dddd-4ddd-8ddd-dddddddddddd',false);
+          do $$
+          declare r jsonb; c int;
+          begin
+            r := public.redeem_voucher(current_setting('app.test_voucher_code'),'reporting check');
+            if coalesce((r->>'success')::boolean,false) is not true then raise exception 'Redeem failed: %', r; end if;
+            select count(*) into c from public.staff_recent_redemptions(20);
+            if c < 1 then raise exception 'Staff reporting returned no redemption'; end if;
+          end $$;
+          reset role;
+
+          set role authenticated;
+          select set_config('request.jwt.claim.sub','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',false);
+          do $$
+          declare s jsonb; c int;
+          begin
+            s := public.partner_voucher_summary();
+            if (s->>'redeemed_total')::int < 1 then raise exception 'Partner summary missing redeemed voucher: %', s; end if;
+            if (s->>'expired_total')::int < 1 then raise exception 'Partner summary missing expired voucher: %', s; end if;
+            select count(*) into c from public.partner_recent_vouchers(50);
+            if c < 2 then raise exception 'Partner recent vouchers incomplete'; end if;
+          end $$;
+          reset role;
+          SQL
+          echo 'REPORTING_RPC_OK=true'
+
+      - name: Emit edge-case evidence
+        shell: bash
+        run: |
+          echo 'COMMERCIAL_CANONICAL_EDGE_CASES_OK=true'
+          echo 'EXPIRY=true'
+          echo 'SUSPENDED_STAFF=true'
+          echo 'UNISSUED_REVOKE=true'
+          echo 'PARTNER_REPORTING=true'
+          echo 'STAFF_REPORTING=true'
+          echo 'PRODUCTION_TOUCHED=false'
