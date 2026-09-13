@@ -1,0 +1,41 @@
+name: Security Gateway v2
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/xiaoe-voucher-bridge/**'
+      - 'supabase/migrations/*security_gateway_v2.sql'
+      - '.github/workflows/security-gateway-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deno-security-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run bridge security unit tests
+        run: deno test supabase/functions/xiaoe-voucher-bridge/security_test.ts
+      - name: Type check bridge source
+        run: deno check supabase/functions/xiaoe-voucher-bridge/index.ts
+
+  static-security-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify v2 guards are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'XIAOE_VOUCHER_COMMERCIAL_BRIDGE_KEYS_JSON' supabase/functions/xiaoe-voucher-bridge/index.ts
+          grep -q 'x-xiaoe-signature' supabase/functions/xiaoe-voucher-bridge/index.ts
+          grep -q 'x-xiaoe-nonce' supabase/functions/xiaoe-voucher-bridge/index.ts
+          grep -q 'timestampWithinWindow' supabase/functions/xiaoe-voucher-bridge/index.ts
+          grep -q 'xiaoe_bridge_nonces' supabase/migrations/*security_gateway_v2.sql
+          grep -q 'LEGACY_ALLOWED_ACTIONS' supabase/functions/xiaoe-voucher-bridge/index.ts
+          echo 'SECURITY_GATEWAY_V2_STATIC_GUARDS=PASS'
