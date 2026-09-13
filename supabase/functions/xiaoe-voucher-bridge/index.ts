@@ -1,19 +1,30 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import {
+  canonicalRequest,
+  hasCapability,
+  hmacSha256Hex,
+  parseBridgeKeys,
+  sha256Hex,
+  timestampWithinWindow,
+  timingSafeEqualHex,
+} from "./security.ts";
 
 const PROJECT_REF = "hukihbcyyqhanaqrizvm";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const BRIDGE_TOKEN = Deno.env.get("XIAOE_VOUCHER_COMMERCIAL_BRIDGE_TOKEN") ?? "";
+const BRIDGE_KEYS = parseBridgeKeys(Deno.env.get("XIAOE_VOUCHER_COMMERCIAL_BRIDGE_KEYS_JSON") ?? "");
 const STATIC_MANAGEMENT_TOKEN = Deno.env.get("XIAOE_VOUCHER_COMMERCIAL_MANAGEMENT_TOKEN") ?? "";
 const OAUTH_CLIENT_ID = Deno.env.get("XIAOE_VOUCHER_COMMERCIAL_OAUTH_CLIENT_ID") ?? "";
 const OAUTH_CLIENT_SECRET = Deno.env.get("XIAOE_VOUCHER_COMMERCIAL_OAUTH_CLIENT_SECRET") ?? "";
 const CALLBACK_URL = `${SUPABASE_URL}/functions/v1/xiaoe-voucher-bridge/oauth/callback`;
+const REPLAY_WINDOW_SECONDS = 300;
+const LEGACY_ALLOWED_ACTIONS = new Set(["health", "read", "oauth_status"]);
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 const html = (body: string, status = 200) => new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
 const allowedOps = new Set(["eq","neq","gt","gte","lt","lte","like","ilike","is","in"]);
 
-function bridgeAuth(req: Request) { return !!BRIDGE_TOKEN && (req.headers.get("x-xiaoe-bridge-token") ?? "") === BRIDGE_TOKEN; }
 function base64url(bytes: Uint8Array) { let s=""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,""); }
 function randomUrlSafe(n=32) { const a=new Uint8Array(n); crypto.getRandomValues(a); return base64url(a); }
 async function sha256url(s:string){ const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s)); return base64url(new Uint8Array(d)); }
@@ -22,6 +33,45 @@ function buildFilters(filters: Record<string, unknown> | undefined): string { if
 async function callJson(url:string, init:RequestInit={}, authMode:"service"|"none"="service") { const headers=new Headers(init.headers??{}); if(authMode==="service"){ headers.set("apikey",SERVICE_ROLE_KEY); headers.set("authorization",`Bearer ${SERVICE_ROLE_KEY}`);} if(!headers.has("content-type")) headers.set("content-type","application/json"); const res=await fetch(url,{...init,headers}); const text=await res.text(); let body:unknown=text; try{ body=text?JSON.parse(text):null;}catch{} return {status:res.status,ok:res.ok,body}; }
 async function rest(path:string,init:RequestInit={}){ const headers=new Headers(init.headers??{}); headers.set("accept-profile","public"); headers.set("content-profile","public"); return callJson(`${SUPABASE_URL}${path}`,{...init,headers},"service"); }
 async function rpc(fn:string,params:unknown={}){ return rest(`/rest/v1/rpc/${encodeURIComponent(fn)}`,{method:"POST",body:JSON.stringify(params)}); }
+
+async function consumeNonce(keyId:string, nonce:string):Promise<boolean>{
+  const out=await rest("/rest/v1/xiaoe_bridge_nonces",{
+    method:"POST",
+    headers:{Prefer:"return=minimal"},
+    body:JSON.stringify({key_id:keyId,nonce,seen_at:new Date().toISOString()}),
+  });
+  return out.ok;
+}
+
+type AuthResult = { ok:true; mode:"signed"|"legacy"; keyId?:string } | { ok:false; status:number; error:string };
+
+async function authenticateRequest(req:Request, action:string, rawBody:string):Promise<AuthResult>{
+  const keyId=req.headers.get("x-xiaoe-key-id")??"";
+  const timestamp=req.headers.get("x-xiaoe-timestamp")??"";
+  const nonce=req.headers.get("x-xiaoe-nonce")??"";
+  const suppliedSignature=req.headers.get("x-xiaoe-signature")??"";
+  const hasAnySignedHeader=!!(keyId||timestamp||nonce||suppliedSignature);
+
+  if(hasAnySignedHeader){
+    if(!keyId||!timestamp||!nonce||!suppliedSignature) return {ok:false,status:401,error:"incomplete signed-request headers"};
+    const config=BRIDGE_KEYS[keyId];
+    if(!config||!config.enabled) return {ok:false,status:401,error:"unknown or disabled key"};
+    if(!timestampWithinWindow(timestamp,Date.now(),REPLAY_WINDOW_SECONDS)) return {ok:false,status:401,error:"request timestamp outside allowed window"};
+    if(!/^[A-Za-z0-9._~-]{8,200}$/.test(nonce)) return {ok:false,status:400,error:"invalid nonce"};
+    if(!hasCapability(config,action)) return {ok:false,status:403,error:"key lacks capability for action"};
+    const bodyHash=await sha256Hex(rawBody);
+    const canonical=canonicalRequest(req.method,action,timestamp,nonce,bodyHash);
+    const expected=await hmacSha256Hex(config.secret,canonical);
+    if(!timingSafeEqualHex(expected,suppliedSignature)) return {ok:false,status:401,error:"invalid signature"};
+    if(!(await consumeNonce(keyId,nonce))) return {ok:false,status:409,error:"replayed or rejected nonce"};
+    return {ok:true,mode:"signed",keyId};
+  }
+
+  const legacy=req.headers.get("x-xiaoe-bridge-token")??"";
+  if(BRIDGE_TOKEN&&legacy===BRIDGE_TOKEN&&LEGACY_ALLOWED_ACTIONS.has(action)) return {ok:true,mode:"legacy"};
+  if(BRIDGE_TOKEN&&legacy===BRIDGE_TOKEN) return {ok:false,status:426,error:"signed-request authentication required for privileged action"};
+  return {ok:false,status:401,error:"unauthorized"};
+}
 
 async function oauthTokens(){ const out=await rpc("xiaoe_oauth_get_tokens",{}); if(!out.ok) throw new Error(`oauth token read failed: ${JSON.stringify(out.body)}`); return out.body as any; }
 async function storeTokens(access_token:string,refresh_token:string,expires_in:number){ const expiresAt=new Date(Date.now()+Math.max(Number(expires_in||3600),60)*1000).toISOString(); const out=await rpc("xiaoe_oauth_store_tokens",{p_access_token:access_token,p_refresh_token:refresh_token,p_expires_at:expiresAt}); if(!out.ok) throw new Error(`oauth token store failed: ${JSON.stringify(out.body)}`); return expiresAt; }
@@ -37,12 +87,17 @@ Deno.serve(async(req:Request)=>{
   const url=new URL(req.url);
   if(url.pathname.endsWith("/oauth/callback")) return handleOAuthCallback(req);
   if(req.method==="OPTIONS") return new Response(null,{status:204});
-  if(!bridgeAuth(req)) return json({ok:false,error:"unauthorized"},401);
   if(!SUPABASE_URL||!SERVICE_ROLE_KEY) return json({ok:false,error:"bridge runtime not configured"},500);
-  let input:Record<string,unknown>={}; try{ input=req.method==="GET"?{}:await req.json(); }catch{return json({ok:false,error:"invalid json"},400);}
+
+  const rawBody=req.method==="GET"?"":await req.text();
+  let input:Record<string,unknown>={};
+  try{ input=rawBody?JSON.parse(rawBody):{}; }catch{return json({ok:false,error:"invalid json"},400);}
   const action=String(input.action??(req.method==="GET"?"health":""));
+  const auth=await authenticateRequest(req,action,rawBody);
+  if(!auth.ok) return json({ok:false,error:auth.error},auth.status);
+
   try{
-    if(action==="health"){ const t=await oauthTokens().catch(()=>({configured:false})); return json({ok:true,bridge:"xiaoe-voucher-bridge",project_ref:PROJECT_REF,profile:"commercial_direct_connector_parity_v2",oauth_client_configured:!!OAUTH_CLIENT_ID&&!!OAUTH_CLIENT_SECRET,oauth_authorized:!!t?.configured,management_plane:STATIC_MANAGEMENT_TOKEN?"static_ready":(t?.configured?"oauth_ready":"oauth_authorization_pending"),actions:["health","oauth_authorize_url","oauth_status","read","insert","update","upsert","delete","rpc","sql_query","sql_execute","auth_list_users","auth_get_user","auth_create_user","auth_update_user","auth_delete_user","storage_list_buckets","storage_create_bucket","storage_update_bucket","storage_delete_bucket","storage_list_objects","storage_delete_objects","management_call"]}); }
+    if(action==="health"){ const t=await oauthTokens().catch(()=>({configured:false})); return json({ok:true,bridge:"xiaoe-voucher-bridge",project_ref:PROJECT_REF,profile:"commercial_security_gateway_v2",auth_mode:auth.mode,oauth_client_configured:!!OAUTH_CLIENT_ID&&!!OAUTH_CLIENT_SECRET,oauth_authorized:!!t?.configured,management_plane:STATIC_MANAGEMENT_TOKEN?"static_ready":(t?.configured?"oauth_ready":"oauth_authorization_pending"),signed_keys_configured:Object.keys(BRIDGE_KEYS).length,actions:["health","oauth_authorize_url","oauth_status","read","insert","update","upsert","delete","rpc","sql_query","sql_execute","auth_list_users","auth_get_user","auth_create_user","auth_update_user","auth_delete_user","storage_list_buckets","storage_create_bucket","storage_update_bucket","storage_delete_bucket","storage_list_objects","storage_delete_objects","management_call"]}); }
     if(action==="oauth_status"){ const t=await oauthTokens(); return json({ok:true,configured:!!t?.configured,expires_at:t?.expires_at??null,client_configured:!!OAUTH_CLIENT_ID&&!!OAUTH_CLIENT_SECRET}); }
     if(action==="oauth_authorize_url"){ if(!OAUTH_CLIENT_ID||!OAUTH_CLIENT_SECRET) return json({ok:false,error:"oauth client credentials not configured"},503); const state=randomUrlSafe(32),verifier=randomUrlSafe(48),challenge=await sha256url(verifier); const p=await rpc("xiaoe_oauth_create_pending",{p_state:state,p_verifier:verifier,p_redirect_uri:CALLBACK_URL}); if(!p.ok) return json({ok:false,error:"unable to create oauth pending state",detail:p.body},p.status); const q=new URLSearchParams({response_type:"code",client_id:OAUTH_CLIENT_ID,redirect_uri:CALLBACK_URL,state,code_challenge:challenge,code_challenge_method:"S256"}); return json({ok:true,authorize_url:`https://api.supabase.com/v1/oauth/authorize?${q.toString()}`,callback_url:CALLBACK_URL}); }
     if(action==="rpc"){ const fn=String(input.function??""); if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(fn)) return json({ok:false,error:"invalid rpc function"},400); const out=await rpc(fn,input.params??{}); return json({ok:out.ok,action,result:out.body},out.status); }
