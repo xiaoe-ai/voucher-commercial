@@ -1,0 +1,25 @@
+name: XiaoE Bridge Security
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/xiaoe-voucher-bridge/**'
+      - 'supabase/canonical/004_xiaoe_bridge_security.sql'
+      - '.github/workflows/xiaoe-bridge-security.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type check bridge security module
+        run: deno check supabase/functions/xiaoe-voucher-bridge/bridge-security.ts
+      - name: Run bridge security regression tests
+        run: deno test --allow-none supabase/functions/xiaoe-voucher-bridge/bridge-security.test.ts
